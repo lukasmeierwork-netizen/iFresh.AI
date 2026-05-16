@@ -1,0 +1,64 @@
+---
+description: Tailwind (NativeWind) first; StyleSheet only when Tailwind can't express it
+globs: src/**/*.{ts,tsx}
+alwaysApply: true
+---
+
+# Styling: Tailwind-first (NativeWind)
+
+All visual styling goes through NativeWind `className`. Reach for
+`StyleSheet` / inline `style` only when Tailwind literally cannot express
+the property (animated values, dynamic numeric tokens from `theme.ts`,
+shadow objects, platform-specific SDK props).
+
+## Do
+
+- Use `className="..."` on `View`, `Pressable`, `ScrollView`, `ThemedText`,
+  etc.
+- Express layout, spacing, typography, radius, and color utilities with
+  Tailwind classes first.
+- Pull dynamic values from `@/constants/theme` and pass them via `style`
+  only when needed (e.g. animated gradients, computed shadows).
+
+```tsx
+// Good
+<View className="flex-row items-center gap-3 rounded-2xl bg-white/5 px-4 py-3">
+  <ThemedText className="text-[15px] font-semibold">Hello</ThemedText>
+</View>
+
+// Good — mixing className with a dynamic token only for what Tailwind can't
+<View
+  className="rounded-2xl px-4 py-3"
+  style={{ backgroundColor: theme.backgroundElement, ...Shadows.userBubble }}
+/>
+```
+
+## Do not
+
+- Do not author new `StyleSheet.create({...})` blocks for what Tailwind can
+  express (`padding`, `margin`, `flex*`, colors, typography, radii).
+- Do not hardcode hex colors in `style`; import `Brand`, `Gradients`, or
+  `Colors` from `@/constants/theme`.
+- Do not add CSS modules (`.module.css`) or `styled-components` — neither
+  is set up for this app.
+- Do not mix `className` and a duplicate `style` prop for the same property.
+
+```tsx
+// Bad — Tailwind covers all of this
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', padding: 12 },
+});
+<View style={styles.row} />
+
+// Good
+<View className="flex-row items-center p-3" />
+```
+
+## Tokens
+
+- Colors/spacing tokens that Tailwind can't read are in
+  `src/constants/theme.ts` (`Brand`, `Gradients`, `Shadows`, `Spacing`,
+  `BottomTabInset`, `MaxContentWidth`). Use them via `style={...}` when a
+  numeric/object is required.
+- Theme-aware text/surface colors come from `useTheme()` — apply via
+  `style={{ color: theme.text }}` since they're runtime values.

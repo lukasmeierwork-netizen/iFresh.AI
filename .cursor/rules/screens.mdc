@@ -1,0 +1,34 @@
+---
+description: Keep expo-router screens thin
+globs: src/app/**/*.tsx
+alwaysApply: false
+---
+
+# Screens must stay thin
+
+Files in `src/app/**` are expo-router routes. They should only compose other
+pieces — not own logic.
+
+## Do
+
+- Import a `useX()` hook from `src/hooks/` for every non-trivial state machine.
+- Import feature components from `src/components/<feature>/`.
+- Pull types, constants, and API calls from `src/lib/<feature>/`.
+- Keep the default export shape: the screen's component name can change, but
+  the file path must stay (it defines the route).
+
+## Don't
+
+- No inline `fetch` / `axios` calls — move to `src/lib/<feature>/api.ts`.
+- No inline `useState` chains longer than ~5 hooks — extract to
+  `src/hooks/use-<feature>.ts`.
+- No sub-component declarations over ~20 lines in the same file — move to
+  `src/components/<feature>/`.
+- Do not rename, move, or delete files under `src/app/` without knowing the
+  route impact.
+
+## Example
+
+Good thin screen (reference):
+[src/app/(tabs)/schedule.tsx](src/app/(tabs)/schedule.tsx) — 95 lines,
+delegates to `useScheduleReminders()` and three feature components.

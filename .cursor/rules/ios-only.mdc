@@ -1,0 +1,43 @@
+---
+description: iOS-only app — never add web or Android code paths
+alwaysApply: true
+---
+
+# iOS-only app
+
+`eyefreshAI` ships to iOS only. `app.json` declares `"platforms": ["ios"]`
+and there is no web or Android build. Treat iOS as the sole target.
+
+## Do not
+
+- Do not introduce `.web.ts(x)` or `.native.ts(x)` file splits. There is one
+  default file per component/hook/lib module.
+- Do not branch on `Platform.OS === 'web'` or `'android'`. Delete such checks
+  and keep the iOS path only.
+- Do not import `react-dom`, `react-native-web`, `next/*`, or any DOM API
+  (`window`, `document`, `localStorage`, `navigator.clipboard`, etc.).
+- Do not add Android-only settings to `app.json` (no `android`, no
+  `androidSpeechServicePackages`, no `android-icon-*` assets).
+- Do not add `expo start --web`, `expo run:android`, or `web`/`android`
+  scripts to `package.json`.
+
+## Do
+
+- Target the iOS path directly — `SymbolView`, `BlurView`, `expo-blur`,
+  `expo-glass-effect`, iOS shadow props (`shadowColor`/`shadowOpacity`/
+  `shadowRadius`/`shadowOffset`), etc.
+- Use `Platform.OS === 'ios'` only when a library legitimately requires it
+  (e.g. `KeyboardAvoidingView` behavior). Prefer writing iOS-only values
+  directly.
+- Native permissions strings live in `app.json` under `ios.infoPlist`.
+
+## Persistence
+
+- Chat history uses `expo-sqlite` (see `src/lib/chat/chat-repository.ts`).
+  Do not add a `localStorage`/`AsyncStorage` fallback "for web".
+- File paths for attachments use `expo-file-system` (`documentDirectory`).
+
+## Sign-in
+
+- Supabase OAuth uses `expo-web-browser` (`openAuthSessionAsync`) — never
+  `window.location` or `signInWithOAuth` browser redirects.

@@ -1,0 +1,38 @@
+---
+description: Conventions for custom hooks and lib modules
+globs: src/{hooks,lib}/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Hooks (`src/hooks/`)
+
+- Filenames use kebab-case: `use-chat.ts`, `use-calendar-selection.ts`.
+- Each hook owns one feature's state machine or side-effects.
+- Return a named object, not a tuple — makes consumers self-documenting:
+
+  ```ts
+  return { messages, draft, setDraft, sendMessage, isSending };
+  ```
+
+- Keep side-effects (permissions, camera, calendar, storage, network) in the
+  hook — not in the screen that consumes it.
+- Wrap handlers in `useCallback` and derived values in `useMemo` when they
+  leave the hook (stable references matter for child memoization).
+
+# `src/lib/<feature>/` (pure TS)
+
+- No React imports, no JSX. Must be safely unit-testable.
+- Put types next to the feature: `src/lib/chat/types.ts`,
+  `src/components/assistant/recent-chat-list.tsx` imports from there — do
+  not create a global `src/types.ts`.
+- Split files by concern:
+  - `api.ts` — network calls + URL constants.
+  - `types.ts` — shared types and initial-value constants.
+  - Named domain files — e.g. `snellen.ts`, `landolt.ts`, `date-utils.ts`.
+
+# Reference pair
+
+Stateless helpers in [src/lib/calendar/date-utils.ts](src/lib/calendar/date-utils.ts)
+drive the stateful [src/hooks/use-calendar-selection.ts](src/hooks/use-calendar-selection.ts),
+which in turn powers [src/components/assistant/calendar-picker.tsx](src/components/assistant/calendar-picker.tsx).
+Follow the same lib → hook → component direction for new features.

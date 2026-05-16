@@ -1,0 +1,58 @@
+---
+description: Component and theme-token conventions
+globs: src/components/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Component conventions
+
+## File & export naming
+
+- Filenames are kebab-case: `chat-bubble.tsx`, `reminder-template-card.tsx`.
+- Exports are PascalCase named exports: `export function ChatBubble(...) {}`.
+- One component per file. Colocated helpers are fine only if < ~20 lines.
+
+## Primitives
+
+- Import text/view primitives from `@/components/ui/themed-text` and
+  `@/components/ui/themed-view`. Never redefine or duplicate them.
+- For repeated UI patterns, reach for existing `ui/` primitives first
+  (`Card`, `Chip`, `IconBadge`, `GradientButton`, `SectionHeader`,
+  `ScreenContainer`, `ProgressRing`, `Collapsible`).
+
+## Design tokens (no hardcoded values)
+
+Import from `@/constants/theme` instead of writing literals:
+
+```ts
+import { Brand, Gradients, Shadows } from '@/constants/theme';
+
+// Bad
+backgroundColor: '#1E88FF'
+shadowOpacity: 0.32
+
+// Good
+backgroundColor: Brand.primary
+...Shadows.userBubble
+colors={Gradients.send}
+```
+
+Available tokens: `Brand.{primary, primaryDark, primaryOn, userBubbleTop,
+userBubbleBottom, userBubbleShadow, sendShadow, success, warn, warnAmber,
+danger, info, violet, violetDark, indigo, heroNavy, heroNavyDeep, heroBlue,
+heroBlueDeep}`, `Gradients.{send, composerPrimary, lightboxBackdrop}`,
+`Shadows.{assistantBubble, userBubble, composer}`.
+
+## Styling
+
+- Prefer NativeWind `className` utilities for layout/typography/color.
+- Use `style={...}` only for dynamic tokens (`Brand`, `Gradients`,
+  `Shadows`) or animated values. Never hardcode hex colors.
+- Full rule: [styling.mdc](mdc:.cursor/rules/styling.mdc).
+
+## Platform
+
+- iOS-only app. Use `SymbolView`, `BlurView`, and iOS shadow props
+  directly. Do **not** add `.native.tsx` / `.web.tsx` splits or branch on
+  `Platform.OS === 'web' | 'android'`. Full rule:
+  [ios-only.mdc](mdc:.cursor/rules/ios-only.mdc).

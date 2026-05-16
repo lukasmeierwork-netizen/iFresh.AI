@@ -1,0 +1,42 @@
+---
+description: Layered folder architecture for the Expo/RN app
+alwaysApply: true
+---
+
+# Project architecture (layered)
+
+The `@/*` alias maps to `src/`. Use these layers strictly — never invert them.
+
+## Where things live
+
+- **`src/app/**`** — expo-router screens only. Thin presenters, ideally < 250 lines.
+  Do not rename or move files here; paths are routes.
+- **`src/components/ui/`** — generic primitives shared across features:
+  `themed-text`, `themed-view`, `card`, `chip`, `gradient-button`, `icon-badge`,
+  `progress-ring`, `screen-container`, `section-header`, `collapsible`.
+- **`src/components/{chat,near-vision,home,assistant,schedule,media,layout}/`** —
+  feature-specific components. Put a new component in the feature folder it
+  belongs to; create a new folder if no feature matches.
+- **`src/hooks/`** — custom hooks (state machines + side-effects):
+  `use-chat`, `use-near-vision-test`, `use-calendar-selection`,
+  `use-schedule-reminders`, `use-theme`, `use-color-scheme`.
+- **`src/lib/<feature>/`** — pure TS helpers, API calls, types, constants:
+  `lib/chat/{api,types}`, `lib/vision/{snellen,landolt}`,
+  `lib/calendar/date-utils`, `lib/schedule/reminder-templates`,
+  `lib/calendar-events`.
+- **`src/constants/theme.ts`** — single source of truth for design tokens:
+  `Colors`, `Brand`, `Gradients`, `Shadows`, `Spacing`, `Fonts`,
+  `BottomTabInset`, `MaxContentWidth`.
+
+## Hard rules
+
+- Never add routes under `src/components/**`.
+- Never put business logic, `fetch`, or large `useState` machines inside
+  `src/app/**` — extract into a `src/hooks/use-*.ts` + `src/lib/<feature>/`.
+- Never hardcode hex colors in components; import from `@/constants/theme`.
+- This is an **iOS-only app**. Do not introduce `.native.tsx` / `.web.tsx`
+  splits or `Platform.OS === 'web' | 'android'` branches. Write the iOS
+  path directly (`SymbolView`, `BlurView`, iOS shadow props). See
+  [ios-only.mdc](mdc:.cursor/rules/ios-only.mdc).
+- Style with NativeWind `className` first; fall back to `style` only for
+  values Tailwind can't express. See [styling.mdc](mdc:.cursor/rules/styling.mdc).
