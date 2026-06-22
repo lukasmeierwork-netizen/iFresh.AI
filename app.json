@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "Eyefresh AI",
+    "description": "An intelligent eye-care companion that tracks viewing distance, blink rate, and screen time to recommend healthier habits, featuring guided eye tests and personalized AI reminders.",
     "slug": "eyefreshAI",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,16 +11,14 @@
     "platforms": ["ios", "android"],
     "ios": {
       "icon": "./assets/images/icon.png",
-      "bundleIdentifier": "com.tb.eyefreshai",
+      "bundleIdentifier": "com.ss.eyefreshAI",
       "deploymentTarget": "15.5",
       "infoPlist": {
         "NSCalendarsUsageDescription": "EyefreshAI uses your calendar to save eye-care reminders you create.",
         "NSCameraUsageDescription": "EyefreshAI uses the front camera while the app is open to estimate your viewing distance, blink rate, and continuous screen time so it can recommend healthier habits. It is also used for near-vision distance checks. Video frames are processed on-device and never stored or uploaded."
-      },
-      "appleTeamId": "RWNWMK7SP4"
+      }
     },
     "plugins": [
-      "expo-iap",
       "expo-router",
       "./plugins/with-sdwebimage-deployment-target",
       [
@@ -47,7 +46,7 @@
       "reactCompiler": true
     },
     "android": {
-      "package": "com.tb.eyefreshai"
+      "package": "com.davidpeter.eyefreshai"
     }
   }
 }

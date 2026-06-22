@@ -1,4 +1,6 @@
 import { withPartial } from "./locale-shell";
+import { helpKo } from "./help-translations";
+import { taskTabKo } from "./task-tab-translations";
 
 export const ko = withPartial({
   tabs: {
@@ -94,6 +96,15 @@ export const ko = withPartial({
     shareAppA11y: "EyeFresh AI 공유",
     rateUs: "평가하기",
     rateUsA11y: "스토어에서 EyeFresh AI 평가",
+    rateUsModalCloseA11y: "평가 창 닫기",
+    rateUsModalEmailLabel: "이메일",
+    rateUsModalEmailPlaceholder: "이메일 주소를 입력하세요",
+    rateUsModalTitle: "경험을 어떻게 평가하시겠어요?",
+    rateUsModalFeedbackLabelOptional: "자세히 알려주세요 (선택)",
+    rateUsModalFeedbackLabel: "무엇이 문제인지 알려주세요",
+    rateUsModalFeedbackPlaceholder: "문제나 제안 사항을 적어 주세요…",
+    rateUsModalSubmit: "제출",
+    rateUsFeedbackEmailSubject: "EyeFresh AI — 앱 피드백",
     rateUsUnavailableTitle: "평가를 사용할 수 없음",
     rateUsUnavailableMessage:
       "기기를 업데이트하거나 스토어에서 직접 평가해 주세요.",
@@ -142,8 +153,9 @@ export const ko = withPartial({
     monitoringCameraBusy: "다른 작업에서 카메라 사용 중",
     todaysPlan: "오늘의 계획",
     seeAll: "모두 보기",
-    openSettingsA11y: "설정 열기",
+    openHelpA11y: "도움말 가이드 열기",
     seeScheduleA11y: "전체 일정 보기",
+    selectedDateA11y: "선택한 날짜: {{date}}",
   },
   assistant: {
     title: "어시스턴트",
@@ -216,6 +228,7 @@ export const ko = withPartial({
     newPlanStartDate: "새 계획 시작일",
     preparing: "준비 중…",
     startNewPlan: "새 계획 시작: {{date}}",
+    ...taskTabKo,
   },
   schedulePlanner: {
     daySun: "일",
@@ -307,6 +320,7 @@ export const ko = withPartial({
   hero: {
     nearVision: "근거리 시력",
     noTestYet: "아직 검사 기록 없음",
+    noRecordsForDate: "이 날짜에 시력 기록이 없습니다.",
     takeTest: "근거리 시력 검사 받기",
     currentResult: "현재 결과",
     rightEye: "오른쪽 눈",
@@ -315,6 +329,11 @@ export const ko = withPartial({
     rightEyeShort: "오른쪽 눈",
     leftEyeShort: "왼쪽 눈",
     bothEyesShort: "양안",
+    sightStatus: {
+      shortSighted: "근시 가능",
+      longSighted: "원시 가능",
+      normal: "안전 시력",
+    },
   },
   quickActions: {
     startTest: "검사 시작",
@@ -330,6 +349,8 @@ export const ko = withPartial({
     periodNight: "밤",
     noScheduleTitle: "아직 일정 없음",
     noScheduleHint: "일정에서 다른 날을 보거나 새 계획을 만드세요.",
+    noTasksForDate: "이 날짜에 이용 가능한 일정이 없습니다.",
+    noTasksForDateHint: "일정에서 다른 날을 보거나 어시스턴트에게 계획 생성을 요청하세요.",
   },
   usageChart: {
     title: "오늘의 화면 시간",
@@ -356,6 +377,15 @@ export const ko = withPartial({
       "테두리가 초록색이 될 때까지 휴대폰을 눈에서 {{minCm}}-{{maxCm}} cm 범위(목표 약 {{cm}} cm)로 유지하세요.",
     validRangeCm: "유효 거리: {{minCm}}-{{maxCm}} cm",
     directionButtonsTitle: "방향 버튼",
+    directionButtonHint: "란돌트 C의 빈 곳 방향을 선택하세요",
+    directionUp: "위 선택",
+    directionDown: "아래 선택",
+    directionLeft: "왼쪽 선택",
+    directionRight: "오른쪽 선택",
+    directionUpLeft: "왼쪽 위 선택",
+    directionUpRight: "오른쪽 위 선택",
+    directionDownLeft: "왼쪽 아래 선택",
+    directionDownRight: "오른쪽 아래 선택",
     swipeWhenVisible: "차트가 나타나면 빈 곳 방향으로 스와이프하세요.",
     nextSymbolCountdown: "{{seconds}}초 후 새 기호",
     nextSymbolTimerA11y: "기호가 바뀔 때까지 약 {{seconds}}초 남음",
@@ -386,6 +416,14 @@ export const ko = withPartial({
       rightCovered: "계속하려면 오른쪽 눈을 가리세요.",
       neither: "계속하려면 양눈을 사용하세요(눈을 가리지 마세요).",
     },
+    faceRequired: "전면 카메라를 향하고 검사 눈 설정만 보이도록 하세요.",
+    testEyeVisibleRequired: "{{eye}}을(를) 뜨고 카메라 앞 중앙에 맞추세요.",
+    coveredEyeMustHide:
+      "{{eye}}을(를) 완전히 가리세요 — 카메라에는 검사 눈만 보여야 합니다.",
+    manualPatchHint:
+      "카메라는 눈 위에 손을 가린 것을 감지하지 못하는 경우가 많습니다. 검사하지 않는 눈을 가리고 검사 눈을 뜬 상태면 아래를 누르세요.",
+    manualPatchConfirm: "{{eye}} 가림 확인 — 검사 계속",
+    manualPatchConfirmA11y: "{{eye}}이(가) 가려졌음을 확인하고 시력 검사를 계속합니다",
     statusRequired: "필수",
     statusDetected: "감지됨",
     eyeCoverState: {
@@ -394,12 +432,28 @@ export const ko = withPartial({
       neither: "가리지 않음",
       unknown: "알 수 없음",
     },
+    eyeCheck: {
+      faceNotVisible: "얼굴이 보이지 않음",
+      leftUnable: "왼쪽: 확인 불가",
+      rightUnable: "오른쪽: 확인 불가",
+      leftVisible: "왼쪽: 보임",
+      rightVisible: "오른쪽: 보임",
+      leftHidden: "왼쪽: 가려짐",
+      rightHidden: "오른쪽: 가려짐",
+      leftUncertain: "왼쪽: 불확실",
+      rightUncertain: "오른쪽: 불확실",
+      readyRight: "왼쪽 가려짐 · 오른쪽 준비",
+      readyLeft: "오른쪽 가려짐 · 왼쪽 준비",
+      readyBoth: "양쪽 눈 보임",
+    },
     beforeStartTitle: "시작 전",
     beforeStartBody:
       "이것은 빠른 선별 도구이며 의학적 진단이 아닙니다. 밝은 곳에서 눈에서 약 {{cm}} cm({{inches}}인치) 거리에 휴대폰을 두세요. 보정은 설정에서 관리합니다.",
     resultsTitle: "결과",
     resultsBody:
       "약 {{cm}} cm 거리에서 읽을 수 있다고 표시한 가장 작은 크기입니다. 한쪽 눈 차이가 크면 전문 안과 검진을 고려하세요.",
+    sightStatusLabel: "시력 거리 상태",
+    averageDistanceCm: "검사 중 평균 {{cm}} cm",
     testAgain: "다시 테스트",
     done: "완료",
     runAgainA11y: "테스트 다시 실행",
@@ -414,6 +468,7 @@ export const ko = withPartial({
     footerCta: "계정 만들기",
     createAccountA11y: "새 계정 만들기",
   },
+  help: helpKo,
   onboarding: {
     welcomeTitlePrefix: "환영합니다",
     welcomeSubtitle:

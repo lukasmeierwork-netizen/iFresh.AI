@@ -1,4 +1,6 @@
 import { withPartial } from "./locale-shell";
+import { helpFr } from "./help-translations";
+import { taskTabFr } from "./task-tab-translations";
 
 export const fr = withPartial({
   tabs: {
@@ -115,6 +117,13 @@ export const fr = withPartial({
     shareAppA11y: "Partager EyeFresh AI",
     rateUs: "Nous noter",
     rateUsA11y: "Noter EyeFresh AI sur le store",
+    rateUsModalCloseA11y: "Fermer la fenetre de notation",
+    rateUsModalEmailLabel: "Votre e-mail",
+    rateUsModalEmailPlaceholder: "Saisissez votre adresse e-mail",
+    rateUsModalFeedbackLabel: "Dites-nous ce qui ne va pas",
+    rateUsModalFeedbackPlaceholder: "Decrivez les problemes ou suggestions…",
+    rateUsModalSubmit: "Envoyer",
+    rateUsFeedbackEmailSubject: "EyeFresh AI — Commentaires sur l'app",
     rateUsUnavailableTitle: "Note indisponible",
     rateUsUnavailableMessage:
       "Mettez à jour votre appareil ou notez-nous directement sur le store.",
@@ -150,8 +159,9 @@ export const fr = withPartial({
     monitoringCameraBusy: "Caméra utilisée par une autre tâche",
     todaysPlan: "PLAN DU JOUR",
     seeAll: "Tout voir",
-    openSettingsA11y: "Ouvrir les réglages",
+    openHelpA11y: "Ouvrir le guide d'aide",
     seeScheduleA11y: "Voir l’agenda complet",
+    selectedDateA11y: "Date sélectionnée : {{date}}",
   },
   assistant: {
     title: "Assistant",
@@ -231,6 +241,7 @@ export const fr = withPartial({
     newPlanStartDate: "Date de début du nouveau plan",
     preparing: "Préparation…",
     startNewPlan: "Nouveau plan : {{date}}",
+    ...taskTabFr,
   },
   schedulePlanner: {
     daySun: "Dim",
@@ -329,6 +340,7 @@ export const fr = withPartial({
   hero: {
     nearVision: "Vision de près",
     noTestYet: "Aucun test enregistré",
+    noRecordsForDate: "Aucun enregistrement visuel pour cette date.",
     takeTest: "Faire un test de vision de près",
     currentResult: "Résultat actuel",
     rightEye: "ŒIL DROIT",
@@ -337,6 +349,11 @@ export const fr = withPartial({
     rightEyeShort: "Œil droit",
     leftEyeShort: "Œil gauche",
     bothEyesShort: "Les deux yeux",
+    sightStatus: {
+      shortSighted: "Myopie probable",
+      longSighted: "Hypermétropie probable",
+      normal: "Vue de près sûre",
+    },
   },
   quickActions: {
     startTest: "Démarrer le test",
@@ -353,6 +370,9 @@ export const fr = withPartial({
     noScheduleTitle: "Pas encore d’agenda",
     noScheduleHint:
       "Ouvrez l’agenda pour voir d’autres jours ou créer un plan.",
+    noTasksForDate: "Aucune tâche disponible pour cette date.",
+    noTasksForDateHint:
+      "Ouvrez l’agenda pour voir d’autres jours ou demandez à l’assistant de créer un plan.",
   },
   usageChart: {
     title: "TEMPS D’ÉCRAN AUJOURD’HUI",
@@ -379,6 +399,15 @@ export const fr = withPartial({
       "Tenez le téléphone à environ {{cm}} cm des yeux jusqu’à ce que le bord devienne vert.",
     validRangeCm: "Plage valide : {{minCm}}-{{maxCm}} cm",
     directionButtonsTitle: "Boutons de direction",
+    directionButtonHint: "Touchez la direction de l'ouverture du C de Landolt",
+    directionUp: "Choisir haut",
+    directionDown: "Choisir bas",
+    directionLeft: "Choisir gauche",
+    directionRight: "Choisir droite",
+    directionUpLeft: "Choisir haut-gauche",
+    directionUpRight: "Choisir haut-droite",
+    directionDownLeft: "Choisir bas-gauche",
+    directionDownRight: "Choisir bas-droite",
     swipeWhenVisible: "Lorsque le tableau apparaît, glissez vers l’ouverture.",
     nextSymbolCountdown: "Nouveau symbole dans {{seconds}} s",
     nextSymbolTimerA11y:
@@ -410,12 +439,47 @@ export const fr = withPartial({
       rightCovered: "Couvrez votre œil droit pour continuer.",
       neither: "Utilisez les deux yeux (ne couvrez aucun œil) pour continuer.",
     },
+    faceRequired:
+      "Regardez la caméra frontale de sorte que seule la configuration de l'œil testé soit visible.",
+    testEyeVisibleRequired:
+      "Gardez votre {{eye}} ouvert et centré devant la caméra.",
+    coveredEyeMustHide:
+      "Couvrez complètement votre {{eye}} — seul l'œil testé doit apparaître à l'écran.",
+    manualPatchHint:
+      "La caméra ne détecte souvent pas une main sur l'œil. Lorsque l'œil non testé est couvert et l'œil testé ouvert, touchez ci-dessous.",
+    manualPatchConfirm: "{{eye}} couvert — continuer le test",
+    manualPatchConfirmA11y:
+      "Confirmer que {{eye}} est couvert et continuer le test visuel",
+    statusRequired: "Requis",
+    statusDetected: "Détecté",
+    eyeCoverState: {
+      leftCovered: "Gauche couvert",
+      rightCovered: "Droit couvert",
+      neither: "Aucun couvert",
+      unknown: "Inconnu",
+    },
+    eyeCheck: {
+      faceNotVisible: "Visage non visible",
+      leftUnable: "Gauche : impossible à vérifier",
+      rightUnable: "Droit : impossible à vérifier",
+      leftVisible: "Gauche : visible",
+      rightVisible: "Droit : visible",
+      leftHidden: "Gauche : masqué",
+      rightHidden: "Droit : masqué",
+      leftUncertain: "Gauche : incertain",
+      rightUncertain: "Droit : incertain",
+      readyRight: "Gauche masqué · Droit prêt",
+      readyLeft: "Droit masqué · Gauche prêt",
+      readyBoth: "Les deux yeux visibles",
+    },
     beforeStartTitle: "Avant de commencer",
     beforeStartBody:
       "Il s’agit d’un dépistage rapide, pas d’un diagnostic médical. Tenez le téléphone à ~{{cm}} cm ({{inches}} po) des yeux sous un bon éclairage. L’étalonnage se gère dans Réglages.",
     resultsTitle: "Résultats",
     resultsBody:
       "Plus petite taille que vous avez indiquée comme lisible à ~{{cm}} cm. Si un œil diffère nettement, envisagez un examen professionnel.",
+    sightStatusLabel: "Statut de distance visuelle",
+    averageDistanceCm: "Moy. {{cm}} cm pendant le test",
     testAgain: "Refaire le test",
     done: "Terminé",
     runAgainA11y: "Relancer le test",
@@ -431,6 +495,7 @@ export const fr = withPartial({
     footerCta: "Créer un compte",
     createAccountA11y: "Créer un nouveau compte",
   },
+  help: helpFr,
   onboarding: {
     welcomeTitlePrefix: "Bienvenue sur",
     welcomeSubtitle:

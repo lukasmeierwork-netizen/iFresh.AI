@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Linking from 'expo-linking';
-import * as StoreReview from 'expo-store-review';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -24,6 +24,7 @@ import { AccountHeroCard } from '@/components/settings/account-hero-card';
 import { AppearanceSection } from '@/components/settings/appearance-section';
 import { LanguageSection } from '@/components/settings/language-section';
 import { PremiumCard } from '@/components/settings/premium-card';
+import { RateUsModal } from '@/components/settings/rate-us-modal';
 import { SegmentedControl } from '@/components/settings/segmented-control';
 import { SettingsGroup, SettingsRow } from '@/components/settings/settings-group';
 import { StepperControl } from '@/components/settings/stepper-control';
@@ -44,6 +45,7 @@ import {
   isStoreIapConfigured,
   isStoreIapSupportedPlatform,
   restoreStorePurchases,
+  showStoreManageSubscriptions,
 } from '@/lib/iap/store-iap';
 import { isVisionCameraAvailable } from '@/lib/usage/vision-camera-availability';
 import {
@@ -72,16 +74,17 @@ const CALIBRATION_MAX = 100;
 // EyeFresh AI distribution + support endpoints.
 const APP_STORE_URL = 'https://apps.apple.com/app/id6469000000';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.ss.eyefreshAI';
-const SUPPORT_EMAIL = 'support@eyefreshai.com';
-const FEATURE_REQUEST_EMAIL = 'feedback@eyefreshai.com';
-const TERMS_URL = 'https://eyefreshai.com/legal/terms';
-const PRIVACY_URL = 'https://eyefreshai.com/legal/privacy';
+const SUPPORT_EMAIL = 'cstar.dev929@gmail.com';
+const FEATURE_REQUEST_EMAIL = 'cstar.dev929@gmail.com';
+const TERMS_URL = 'https://feel-fresh-ai.vercel.app/terms';
+const PRIVACY_URL = 'https://feel-fresh-ai.vercel.app/privacy';
 const APPLE_MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
 const PLAY_MANAGE_SUBSCRIPTIONS_URL =
   'https://play.google.com/store/account/subscriptions?package=com.ss.eyefreshAI';
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
+  const router = useRouter();
   const theme = useTheme();
   const safeAreaInsets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -99,6 +102,7 @@ export default function SettingsScreen() {
   const [isPremium, setIsPremium] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [showRateUsModal, setShowRateUsModal] = useState(false);
   const lastSyncedCameraOnboardingRef = useRef<CameraPermissionStatus | null>(null);
   const orientation = height >= width ? 'portrait' : 'landscape';
   const deviceId = Device.modelId ?? Device.modelName ?? 'ios-device';
@@ -212,7 +216,7 @@ export default function SettingsScreen() {
         if (!isStoreIapSupportedPlatform() || !isStoreIapConfigured()) {
           setIsPremium(false);
         } else {
-          const connected = await ensureStoreIapConnection();
+          const connected = await ensureStoreIapConnection({ userId: user.id });
           if (connected) {
             setIsPremium(await hasProSubscriptionAccess());
           } else {
@@ -343,27 +347,25 @@ export default function SettingsScreen() {
     }
   }, [storeUrl, t]);
 
-  const handleRateUs = useCallback(async () => {
-    try {
-      const available = await StoreReview.isAvailableAsync();
-      const hasAction = available && (await StoreReview.hasAction());
-      if (hasAction) {
-        await StoreReview.requestReview();
-        return;
-      }
-      const fallback = await StoreReview.storeUrl();
-      await Linking.openURL(fallback ?? storeUrl);
-    } catch {
-      Alert.alert(
-        t('settings.rateUsUnavailableTitle'),
-        t('settings.rateUsUnavailableMessage'),
-      );
-    }
-  }, [storeUrl, t]);
+  const handleRateUs = useCallback(() => {
+    setShowRateUsModal(true);
+  }, []);
 
-  const handleManageSubscription = useCallback(() => {
-    void Linking.openURL(manageSubscriptionUrl);
-  }, [manageSubscriptionUrl]);
+  const handleRateUsSubmit = useCallback(
+    async (rating: number, feedback: string) => {
+      const subject = encodeURIComponent(`${t('settings.rateUsFeedbackEmailSubject')} - ${rating} Stars`);
+      const body = encodeURIComponent(feedback);
+      void Linking.openURL(`mailto:${FEATURE_REQUEST_EMAIL}?subject=${subject}&body=${body}`);
+    },
+    [t],
+  );
+
+  const handleManageSubscription = useCallback(async () => {
+    const shown = await showStoreManageSubscriptions({ userId: user?.id });
+    if (!shown) {
+      void Linking.openURL(manageSubscriptionUrl);
+    }
+  }, [manageSubscriptionUrl, user?.id]);
 
   const handleRestorePurchases = useCallback(async () => {
     if (isRestoring) return;
@@ -759,6 +761,11 @@ export default function SettingsScreen() {
           </View>
         </SafeAreaView>
       </ScrollView>
+      <RateUsModal
+        visible={showRateUsModal}
+        onClose={() => setShowRateUsModal(false)}
+        onSubmit={handleRateUsSubmit}
+      />
     </TabGlassScreenRoot>
   );
 }

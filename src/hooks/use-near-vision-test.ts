@@ -19,11 +19,18 @@ import {
 import {
   loadNearVisionCalibration,
 } from "@/lib/vision/near-vision-storage";
+import { isHandEyePatchActive } from "@/lib/usage/eye-cover-classifier";
+import { getUsageSnapshot } from "@/lib/usage/usage-store";
 import { uploadNearVisionResults } from "@/lib/vision/near-vision-results-api";
+import { NEAR_VISION_TARGET_CM } from "@/lib/vision/near-vision-config";
 import {
-  isWithinFocusRange,
-  NEAR_VISION_TARGET_CM,
-} from "@/lib/vision/near-vision-config";
+  createNearVisionDistanceState,
+  computeSessionSightMetrics,
+  ingestNearVisionDistance,
+  isPlausibleNearVisionDistanceCm,
+  nearVisionChartDistanceCm,
+  type SightDistanceStatus,
+} from "@/lib/vision/near-vision-distance";
 import {
   N_TO_SNELLEN,
   SNELLEN_TO_DECIMAL,
@@ -56,7 +63,16 @@ export function useNearVisionTest() {
 
   const [step, setStep] = useState<NearVisionStep>("ready");
   const [liveDistanceCm, setLiveDistanceCm] = useState<number | null>(null);
+  const [stabilizedDistanceCm, setStabilizedDistanceCm] = useState<number | null>(
+    null,
+  );
+  const [inValidFocusRange, setInValidFocusRange] = useState(false);
   const [correctionScale, setCorrectionScale] = useState(1);
+  const nearVisionDistanceRef = useRef(createNearVisionDistanceState());
+  const sessionDistanceSamplesRef = useRef<number[]>([]);
+  const [averageDistanceCm, setAverageDistanceCm] = useState<number | null>(null);
+  const [sightDistanceStatus, setSightDistanceStatus] =
+    useState<SightDistanceStatus | null>(null);
 
   const [eye, setEye] = useState<Eye>("right");
   const [pendingEye, setPendingEye] = useState<Eye>("right");
@@ -150,23 +166,21 @@ export function useNearVisionTest() {
 
   const landoltRotationDeg = landoltOctant * 45;
 
-  const inValidFocusRange =
-    step === "test" &&
-    liveDistanceCm != null &&
-    isWithinFocusRange(liveDistanceCm);
+  const chartDistanceCm = useMemo(
+    () => nearVisionChartDistanceCm(stabilizedDistanceCm, inValidFocusRange),
+    [inValidFocusRange, stabilizedDistanceCm],
+  );
 
   const landoltSizePx = useMemo(() => {
-    const pxNominal = landoltDiameterPxForN(
+    const pxAtDistance = landoltDiameterPxForN(
       currentN,
-      NEAR_VISION_TARGET_CM,
+      chartDistanceCm,
       pixelsPerMm,
       correctionScale,
     );
-    /** Keep optotype size fixed during each test level; distance only gates focus validity. */
-    const scaled = pxNominal * ladderUniformScale;
-    /** No per-row viewport min() cap; smallest rows may legitimately subtend few px. */
+    const scaled = pxAtDistance * ladderUniformScale;
     return Math.max(4, Math.round(scaled));
-  }, [correctionScale, currentN, ladderUniformScale, pixelsPerMm]);
+  }, [chartDistanceCm, correctionScale, currentN, ladderUniformScale, pixelsPerMm]);
 
   useEffect(() => {
     inValidFocusRef.current = inValidFocusRange;
@@ -220,11 +234,48 @@ export function useNearVisionTest() {
     return () => clearInterval(id);
   }, [step, inValidFocusRange, landoltOctant]);
 
+  const resetNearVisionDistance = useCallback(() => {
+    nearVisionDistanceRef.current = createNearVisionDistanceState();
+    setStabilizedDistanceCm(null);
+    setInValidFocusRange(false);
+  }, []);
+
+  const resetSessionSightMetrics = useCallback(() => {
+    sessionDistanceSamplesRef.current = [];
+    setAverageDistanceCm(null);
+    setSightDistanceStatus(null);
+  }, []);
+
   const handleLiveDistance = useCallback(
     (estimate: { distanceCm: number } | null) => {
-      setLiveDistanceCm(estimate?.distanceCm ?? null);
+      const raw = estimate?.distanceCm ?? null;
+      const timestampMs = Date.now();
+      const handPatchActive = isHandEyePatchActive(
+        getUsageSnapshot().eyeCoverState,
+      );
+      const { next, stabilizedCm, inRange } = ingestNearVisionDistance(
+        nearVisionDistanceRef.current,
+        raw,
+        timestampMs,
+        { handPatchActive },
+      );
+      nearVisionDistanceRef.current = next;
+      if (raw != null) {
+        setLiveDistanceCm(raw);
+      } else if (stabilizedCm == null) {
+        setLiveDistanceCm(null);
+      }
+      setStabilizedDistanceCm(stabilizedCm);
+      setInValidFocusRange(step === "test" && inRange);
+      if (
+        step === "test" &&
+        stabilizedCm != null &&
+        isPlausibleNearVisionDistanceCm(stabilizedCm)
+      ) {
+        sessionDistanceSamplesRef.current.push(stabilizedCm);
+      }
     },
-    [],
+    [step],
   );
 
   const clampIndex = useCallback(
@@ -241,6 +292,7 @@ export function useNearVisionTest() {
 
   const resetEyeState = useCallback(() => {
     setLiveDistanceCm(null);
+    resetNearVisionDistance();
     prevInValidFocusRef.current = false;
     lostValidFocusOnceRef.current = false;
     setWrongSwipe(false);
@@ -258,10 +310,12 @@ export function useNearVisionTest() {
     setExploredIndices([]);
     exploredLevelsRef.current = new Set();
     setLandoltOctant((prev) => randomLandoltOctant(prev));
-  }, []);
+  }, [resetNearVisionDistance]);
 
   const beginTestFlow = useCallback(() => {
     setLiveDistanceCm(null);
+    resetNearVisionDistance();
+    resetSessionSightMetrics();
     prevInValidFocusRef.current = false;
     lostValidFocusOnceRef.current = false;
     setWrongSwipe(false);
@@ -285,7 +339,7 @@ export function useNearVisionTest() {
     setExploredIndices([]);
     exploredLevelsRef.current = new Set();
     setStep("ready");
-  }, []);
+  }, [resetNearVisionDistance, resetSessionSightMetrics]);
 
   const adjustCalibration = useCallback((delta: number) => {
     setCorrectionScale((prev) =>
@@ -296,8 +350,9 @@ export function useNearVisionTest() {
   const startPendingEye = useCallback(() => {
     setEye(pendingEye);
     resetEyeState();
+    resetNearVisionDistance();
     setStep("test");
-  }, [pendingEye, resetEyeState]);
+  }, [pendingEye, resetEyeState, resetNearVisionDistance]);
 
   const finishEye = useCallback(
     (result: NearAcuityResult | null) => {
@@ -317,6 +372,9 @@ export function useNearVisionTest() {
         return;
       }
 
+      const metrics = computeSessionSightMetrics(sessionDistanceSamplesRef.current);
+      setAverageDistanceCm(metrics.averageDistanceCm);
+      setSightDistanceStatus(metrics.sightDistanceStatus);
       setStep("results");
     },
     [eye],
@@ -537,6 +595,8 @@ export function useNearVisionTest() {
           left: leftResult,
           both: bothResult,
           capturedAt,
+          averageDistanceCm,
+          sightDistanceStatus,
         });
       } catch (error) {
         console.warn(
@@ -545,7 +605,7 @@ export function useNearVisionTest() {
         );
       }
     })();
-  }, [step, rightResult, leftResult, bothResult]);
+  }, [step, rightResult, leftResult, bothResult, averageDistanceCm, sightDistanceStatus]);
 
   return {
     step,
@@ -555,6 +615,7 @@ export function useNearVisionTest() {
     adjustCalibration,
 
     liveDistanceCm,
+    stabilizedDistanceCm,
     handleLiveDistance,
     inValidFocusRange,
 
@@ -575,5 +636,7 @@ export function useNearVisionTest() {
     rightResult,
     leftResult,
     bothResult,
+    averageDistanceCm,
+    sightDistanceStatus,
   };
 }

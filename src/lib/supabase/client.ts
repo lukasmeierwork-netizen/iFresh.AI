@@ -17,6 +17,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "", {
+  // RN fetch can lose `this` context; binding avoids transport failures after OAuth.
+  global: { fetch: fetch.bind(globalThis) },
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,

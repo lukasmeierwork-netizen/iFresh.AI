@@ -28,8 +28,9 @@ export const catalogEn = {
     monitoringCameraBusy: "Camera busy with another task",
     todaysPlan: "TODAY'S PLAN",
     seeAll: "See all",
-    openSettingsA11y: "Open settings",
+    openHelpA11y: "Open help guide",
     seeScheduleA11y: "See all tasks",
+    selectedDateA11y: "Selected date {{date}}",
   },
   assistant: {
     title: "Assistant",
@@ -106,9 +107,14 @@ export const catalogEn = {
     startNewPlan: "Start new plan: {{date}}",
     overallCompleted: "{{completed}} of {{total}} completed",
     periodCompleted: "{{completed}} of {{total}} completed",
-    loading: "Loading today's plan…",
-    emptyTitle: "No tasks for this day yet",
-    emptyHint: "Come back later or open the app again to load your plan.",
+    loading: "Loading tasks…",
+    translating: "Preparing tasks in your language…",
+    emptyTitle: "No tasks available for this date.",
+    emptyHint: "Tasks are generated automatically each day. Choose another date on the calendar to view a different day.",
+    noLocaleContentTitle: "No task content for this language",
+    noLocaleContentHint: "Tasks for this day are not available in your selected language. Change the app language in Settings or choose another date.",
+    allCompleteTitle: "All tasks complete!",
+    allCompleteBody: "You finished every task for this day. Great work caring for your eyes.",
     errorTitle: "Could not load your plan",
     toggleA11y: "Toggle task: {{title}}",
     period: {
@@ -126,6 +132,89 @@ export const catalogEn = {
       nutrition: "NUTRITION",
       sleep: "SLEEP",
       environment: "ENVIRONMENT",
+      "blink-drill": "BLINK DRILL",
+      "coffee-gaze-break": "GAZE BREAK",
+      "near-far-focus": "FOCUS SHIFT",
+      palming: "PALMING",
+      "20-20-20": "SCREEN BREAK",
+      "figure-eight": "EYE EXERCISE",
+    },
+    periodHint: {
+      morning: "Start your day",
+      afternoon: "Midday habits",
+      evening: "Wind down",
+      night: "Before sleep",
+    },
+    slug: {
+      "blink-drill": {
+        title: "Blink drill",
+        description:
+          "Blink fully 10 times, pause, then repeat twice to refresh your tear film.",
+      },
+      "coffee-gaze-break": {
+        title: "Coffee gaze break",
+        description:
+          "Look out a window at a distant object while your drink cools — no phone scrolling.",
+      },
+      "near-far-focus": {
+        title: "Near–far focus shift",
+        description: "Alternate focus between your fingertip and a far object for 60 seconds.",
+      },
+      palming: {
+        title: "Palming rest",
+        description: "Cover closed eyes with warm palms for one minute without pressing on the lids.",
+      },
+      "20-20-20": {
+        title: "20-20-20 break",
+        description:
+          "Every 20 minutes, look 20 feet away for 20 seconds before returning to your screen.",
+      },
+      "figure-eight": {
+        title: "Figure-eight tracking",
+        description:
+          "Slowly trace a large figure eight with your eyes for 30 seconds in each direction.",
+      },
+    },
+    localizedCopy: {
+      "eye-exercise": {
+        title: "Eye movement drill",
+        description:
+          "Follow a slow figure-eight or near–far focus shift for one minute to relax eye muscles.",
+      },
+      "screen-break": {
+        title: "20-20-20 screen break",
+        description:
+          "Every 20 minutes, look at something 20 feet away for 20 seconds before returning to your screen.",
+      },
+      "vision-rest": {
+        title: "Palming rest",
+        description:
+          "Cup your palms over closed eyes without pressing, breathe slowly, and rest for 60 seconds.",
+      },
+      hydration: {
+        title: "Hydration check",
+        description:
+          "Drink a full glass of water and blink fully a few times to keep the tear film stable.",
+      },
+      posture: {
+        title: "Screen distance reset",
+        description:
+          "Sit back, align the top of the screen near eye level, and keep an arm-length viewing distance.",
+      },
+      nutrition: {
+        title: "Eye-friendly snack",
+        description:
+          "Choose leafy greens, citrus, or nuts today to support long-term eye health.",
+      },
+      sleep: {
+        title: "Wind-down for eyes",
+        description: "Dim screens 30 minutes before bed and avoid scrolling in a dark room.",
+      },
+      environment: {
+        title: "Lighting check",
+        description:
+          "Reduce glare, match room lighting to screen brightness, and avoid harsh overhead lights.",
+      },
     },
   },
   schedulePlanner: {
@@ -219,6 +308,7 @@ export const catalogEn = {
   hero: {
     nearVision: "Near Vision",
     noTestYet: "No test recorded yet",
+    noRecordsForDate: "No vision records available for this date.",
     takeTest: "Take a near vision test",
     currentResult: "Current result",
     rightEye: "RIGHT EYE",
@@ -227,6 +317,11 @@ export const catalogEn = {
     rightEyeShort: "Right eye",
     leftEyeShort: "Left eye",
     bothEyesShort: "Both eyes",
+    sightStatus: {
+      shortSighted: "Short sighted",
+      longSighted: "Long sighted",
+      normal: "Safe sighted",
+    },
   },
   quickActions: {
     startTest: "Start test",
@@ -313,6 +408,16 @@ export const catalogEn = {
       rightCovered: "Cover your right eye to continue.",
       neither: "Use both eyes (do not cover either eye) to continue.",
     },
+    faceRequired:
+      "Face the front camera so only your test eye setup is visible.",
+    testEyeVisibleRequired:
+      "Keep your {{eye}} eye open and centered in front of the camera.",
+    coveredEyeMustHide:
+      "Cover your {{eye}} completely — only your test eye should appear on camera.",
+    manualPatchHint:
+      "The camera often cannot see a hand over your eye. When your non-test eye is covered and your test eye is open, tap below.",
+    manualPatchConfirm: "{{eye}} covered — continue test",
+    manualPatchConfirmA11y: "Confirm {{eye}} is covered and continue the vision test",
     statusRequired: "Required",
     statusDetected: "Detected",
     eyeCoverState: {
@@ -321,12 +426,28 @@ export const catalogEn = {
       neither: "none",
       unknown: "unknown",
     },
+    eyeCheck: {
+      faceNotVisible: "Face not visible",
+      leftUnable: "Left: unable to check",
+      rightUnable: "Right: unable to check",
+      leftVisible: "Left: visible",
+      rightVisible: "Right: visible",
+      leftHidden: "Left: hidden",
+      rightHidden: "Right: hidden",
+      leftUncertain: "Left: uncertain",
+      rightUncertain: "Right: uncertain",
+      readyRight: "Left hidden · Right ready",
+      readyLeft: "Right hidden · Left ready",
+      readyBoth: "Both eyes visible",
+    },
     beforeStartTitle: "Before you start",
     beforeStartBody:
       "This is a quick screening tool, not a medical diagnosis. Hold your phone ~{{cm}} cm ({{inches}} in) from your eyes in good lighting. Calibration is managed from Settings.",
     resultsTitle: "Results",
     resultsBody:
       "Smallest size you marked as readable at ~{{cm}} cm. If one eye differs noticeably, consider a professional eye exam.",
+    sightStatusLabel: "Sight distance status",
+    averageDistanceCm: "Avg {{cm}} cm during test",
     testAgain: "Test again",
     done: "Done",
     runAgainA11y: "Run test again",
@@ -431,6 +552,15 @@ export const catalogEn = {
     shareAppA11y: "Share EyeFresh AI",
     rateUs: "Rate Us",
     rateUsA11y: "Rate EyeFresh AI on the App Store",
+    rateUsModalCloseA11y: "Close rate us dialog",
+    rateUsModalEmailLabel: "Your email",
+    rateUsModalEmailPlaceholder: "Enter your email address",
+    rateUsModalTitle: "How would you rate your experience?",
+    rateUsModalFeedbackLabelOptional: "Please tell us more (optional)",
+    rateUsModalFeedbackLabel: "Please tell us what's wrong",
+    rateUsModalFeedbackPlaceholder: "Describe the issues or suggestions…",
+    rateUsModalSubmit: "Submit",
+    rateUsFeedbackEmailSubject: "EyeFresh AI — App feedback",
     rateUsUnavailableTitle: "Rating unavailable",
     rateUsUnavailableMessage:
       "Please update your device or rate us directly on the App Store.",
@@ -460,6 +590,101 @@ export const catalogEn = {
     termsConditionsA11y: "Open the Terms and Conditions",
     privacyPolicy: "Privacy Policy",
     privacyPolicyA11y: "Open the Privacy Policy",
+  },
+  help: {
+    backA11y: "Go back",
+    heroEyebrow: "LEARN THE APP",
+    title: "Help & Guide",
+    subtitle: "Everything EyeFresh AI can do — explained in simple steps.",
+    overview: {
+      title: "What is EyeFresh AI?",
+      intro:
+        "EyeFresh AI helps you take care of your eyes during everyday phone use.",
+      bullet1: "Checks your near vision with a guided test on your phone",
+      bullet2: "Tracks habits like viewing distance and screen time without breaks",
+      bullet3: "Gives you a daily plan of small eye-care tasks",
+      disclaimer:
+        "EyeFresh is a screening tool, not a replacement for an eye doctor. Use it to build better habits and notice changes over time.",
+    },
+    home: {
+      title: "Home tab",
+      body: "Your daily dashboard — everything important at a glance.",
+      tip1: "Near Vision card shows your latest test result with a color status.",
+      tip2: "Quick actions let you start a test or open Tasks with one tap.",
+      tip3: "Today's plan previews your checklist — tap See all for the full list.",
+    },
+    nearVision: {
+      title: "Near vision test",
+      intro: "A guided check you can run from Home, Scan, or Quick actions.",
+      step1Title: "Get the distance right",
+      step1Body:
+        "Hold the phone about 40 cm (16 in) away. Move closer or farther until the border turns green.",
+      step2Title: "Test each eye",
+      step2Body:
+        "Cover your left eye for the right-eye test, then swap. Finish with both eyes open.",
+      step3Title: "Read the symbols",
+      step3Body:
+        "Each symbol is a ring with a gap. Swipe or tap toward the gap direction.",
+      step4Title: "Symbols get smaller",
+      step4Body:
+        "Each correct answer shows a smaller symbol. Your result is the smallest size you read correctly.",
+      step5Title: "Review results",
+      step5Body:
+        "See scores per eye in Snellen (20/20) or Decimal (1.0) format — change this in Settings.",
+    },
+    scan: {
+      title: "Scan tab",
+      body: "Track how your near vision changes over time on the history graph.",
+      tip: "Test once a week under similar lighting for the most useful trend.",
+    },
+    tasks: {
+      title: "Tasks tab",
+      body: "Your personalized daily checklist grouped by morning, afternoon, evening, and night.",
+      howTo: "Tap a task to mark it complete. Small daily wins protect your eyes long term.",
+      categories:
+        "Includes screen breaks, eye exercises, hydration, posture, nutrition, sleep, and environment tips.",
+    },
+    privacy: {
+      title: "Camera & privacy",
+      body: "The front camera measures viewing distance, blink rate, and eye cover during tests.",
+      onDevice: "All processing happens on your iPhone — nothing is uploaded.",
+      neverUpload: "No photos or videos are saved or sent anywhere.",
+    },
+    settings: {
+      title: "Settings",
+      body: "Manage account, appearance, language, permissions, and vision preferences.",
+      calibration:
+        "Adjust the calibration slider until the blue bar matches 20 mm on a real ruler.",
+      format: "Choose Snellen (20/20) or Decimal (1.0), and Swipe or Controller input mode.",
+    },
+    tips: {
+      title: "Tips for best results",
+      tip1: "Test under the same lighting and with the same glasses each time.",
+      tip2: "Wait for the green border before answering.",
+      tip3: "Cover the non-test eye fully — tap confirm if the camera can't detect your hand.",
+      tip4: "Follow the 20-20-20 rule: every 20 min, look 20 feet away for 20 seconds.",
+    },
+    doctor: {
+      title: "When to see an eye doctor",
+      body: "See a professional for sudden vision loss, eye pain, one eye much worse than the other, or steady decline over several weeks.",
+    },
+    faq: {
+      title: "Common questions",
+      q1: "Why does the border stay red?",
+      a1: "You're too close or too far. Move the phone until it turns green (~40 cm).",
+      q2: "What's the difference between 20/20 and 1.0?",
+      a2: "Same result, different format. Change it in Settings → Vision result display.",
+      q3: "Why are my left and right eye results different?",
+      a3: "Small differences are normal. Large gaps may warrant a professional exam.",
+      q4: "Do I need an account?",
+      a4: "You can explore without one, but signing in saves your history and daily plan.",
+    },
+    supportTitle: "Still need help?",
+    supportBody: "Our team is happy to answer questions about tests, tasks, or your account.",
+    contactSupport: "Contact support",
+    contactSupportA11y: "Email EyeFresh AI support",
+    sectionExpandedA11y: "{{title}}, expanded",
+    sectionCollapsedA11y: "{{title}}, collapsed",
   },
   auth: {
     title: "Welcome back",

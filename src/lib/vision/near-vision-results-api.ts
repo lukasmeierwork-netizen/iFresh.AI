@@ -3,9 +3,11 @@ import {
   getBackendUrl,
   resolveBackendUrlForDevice,
 } from "@/lib/network/backend-origin";
+import { invalidateNearVisionHistory } from "@/lib/vision/near-vision-results-invalidation";
 import type {
   NearVisionHistoryEntry,
   NearVisionSavedResult,
+  SightDistanceStatus,
 } from "@/lib/vision/near-vision-storage";
 import type { NearAcuityResult } from "@/lib/vision/snellen";
 import { SNELLEN_TO_DECIMAL } from "@/lib/vision/snellen";
@@ -15,6 +17,8 @@ export type NearVisionUploadPayload = {
   left: NearAcuityResult | null;
   both: NearAcuityResult | null;
   capturedAt?: string;
+  averageDistanceCm?: number | null;
+  sightDistanceStatus?: SightDistanceStatus | null;
 };
 
 type NearVisionUploadResponse = {
@@ -27,6 +31,8 @@ type NearVisionHistoryApiRow = {
   right_result?: Pick<NearAcuityResult, "nSize" | "approxSnellen"> | null;
   left_result?: Pick<NearAcuityResult, "nSize" | "approxSnellen"> | null;
   both_result?: Pick<NearAcuityResult, "nSize" | "approxSnellen"> | null;
+  average_distance_cm?: number | null;
+  sight_distance_status?: SightDistanceStatus | null;
 };
 
 type NearVisionHistoryResponse = {
@@ -41,6 +47,7 @@ export type NearVisionInsight = {
   sampleCount: number;
   periodDays: number;
   generatedAt: string;
+  locale?: string;
 };
 
 type NearVisionInsightResponse = {
@@ -75,18 +82,60 @@ function eyeResultFromHistoryPartial(
   };
 }
 
+const SIGHT_DISTANCE_STATUSES = new Set<SightDistanceStatus>([
+  "shortSighted",
+  "longSighted",
+  "normal",
+]);
+
+function parseSightDistanceStatus(raw: unknown): SightDistanceStatus | null {
+  if (typeof raw !== "string") return null;
+  return SIGHT_DISTANCE_STATUSES.has(raw as SightDistanceStatus)
+    ? (raw as SightDistanceStatus)
+    : null;
+}
+
+function parseAverageDistanceCm(raw: unknown): number | null {
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) return null;
+  return raw;
+}
+
 /** Latest completed test from a chronological history list (oldest → newest). */
 export function latestNearVisionSavedResultFromHistory(
   entries: NearVisionHistoryEntry[],
 ): NearVisionSavedResult | null {
   if (entries.length === 0) return null;
   const last = entries[entries.length - 1];
+  return historyEntryToSavedResult(last);
+}
+
+function sameCalendarDayFromIso(iso: string, date: Date): boolean {
+  const parsed = new Date(iso);
+  return (
+    parsed.getFullYear() === date.getFullYear() &&
+    parsed.getMonth() === date.getMonth() &&
+    parsed.getDate() === date.getDate()
+  );
+}
+
+function historyEntryToSavedResult(entry: NearVisionHistoryEntry): NearVisionSavedResult {
   return {
-    savedAt: last.savedAt,
-    right: eyeResultFromHistoryPartial(last.right, "right"),
-    left: eyeResultFromHistoryPartial(last.left, "left"),
-    both: eyeResultFromHistoryPartial(last.both, "both"),
+    savedAt: entry.savedAt,
+    right: eyeResultFromHistoryPartial(entry.right, "right"),
+    left: eyeResultFromHistoryPartial(entry.left, "left"),
+    both: eyeResultFromHistoryPartial(entry.both, "both"),
+    averageDistanceCm: entry.averageDistanceCm ?? null,
+    sightDistanceStatus: entry.sightDistanceStatus ?? null,
   };
+}
+
+/** Latest test on a specific calendar day from a chronological history list. */
+export function latestNearVisionSavedResultForDate(
+  entries: NearVisionHistoryEntry[],
+  date: Date,
+): NearVisionSavedResult | null {
+  const dayEntries = entries.filter((entry) => sameCalendarDayFromIso(entry.savedAt, date));
+  return latestNearVisionSavedResultFromHistory(dayEntries);
 }
 
 function normalizeHistoryRow(row: NearVisionHistoryApiRow): NearVisionHistoryEntry | null {
@@ -124,6 +173,8 @@ function normalizeHistoryRow(row: NearVisionHistoryApiRow): NearVisionHistoryEnt
       typeof left.approxSnellen === "string"
         ? { nSize: left.nSize, approxSnellen: left.approxSnellen }
         : null,
+    averageDistanceCm: parseAverageDistanceCm(row.average_distance_cm),
+    sightDistanceStatus: parseSightDistanceStatus(row.sight_distance_status),
   };
 }
 
@@ -148,6 +199,8 @@ export async function uploadNearVisionResults(
         left: payload.left,
         both: payload.both,
         capturedAt: payload.capturedAt ?? new Date().toISOString(),
+        averageDistanceCm: payload.averageDistanceCm ?? null,
+        sightDistanceStatus: payload.sightDistanceStatus ?? null,
       }),
     });
   } catch (error) {
@@ -168,6 +221,8 @@ export async function uploadNearVisionResults(
     }
     throw new Error(message);
   }
+
+  invalidateNearVisionHistory();
 }
 
 export async function fetchNearVisionHistory(

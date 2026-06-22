@@ -1,12 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { NearAcuityResult, NearVisionDisplayFormat } from '@/lib/vision/snellen';
+import type { SightDistanceStatus } from '@/lib/vision/near-vision-distance';
+
+export type { SightDistanceStatus };
 
 export type NearVisionSavedResult = {
   savedAt: string; // ISO
   right: NearAcuityResult | null;
   left: NearAcuityResult | null;
   both: NearAcuityResult | null;
+  averageDistanceCm?: number | null;
+  sightDistanceStatus?: SightDistanceStatus | null;
 };
 
 export type NearVisionHistoryEntry = {
@@ -16,6 +21,8 @@ export type NearVisionHistoryEntry = {
   right?: Pick<NearAcuityResult, 'nSize' | 'approxSnellen'> | null;
   left?: Pick<NearAcuityResult, 'nSize' | 'approxSnellen'> | null;
   both?: Pick<NearAcuityResult, 'nSize' | 'approxSnellen'> | null;
+  averageDistanceCm?: number | null;
+  sightDistanceStatus?: SightDistanceStatus | null;
 };
 
 const CALIBRATION_STORAGE_KEY = 'eyefresh:nearVision:calibration:v1';

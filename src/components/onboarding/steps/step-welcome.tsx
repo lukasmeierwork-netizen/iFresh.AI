@@ -5,6 +5,7 @@ import React, { useMemo } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useTheme } from '@/hooks/use-theme';
 import { ThemedText } from '@/components/ui/themed-text';
 import { ThemedView } from '@/components/ui/themed-view';
 import { Brand, MaxContentWidth, Spacing } from '@/constants/theme';
@@ -23,6 +24,7 @@ type StepWelcomeProps = {
 export function StepWelcome({ onContinue }: StepWelcomeProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const theme = useTheme();
   const { width: screenW } = useWindowDimensions();
 
   const heroBandHeight = useMemo(() => Math.min(screenW * 0.92, 360), [screenW]);
@@ -31,7 +33,7 @@ export function StepWelcome({ onContinue }: StepWelcomeProps) {
   const bottomPad = Math.max(insets.bottom, Spacing.three);
 
   return (
-    <View className="flex-1" style={{ backgroundColor: "#FFFFF9" }}>
+    <View className="flex-1" style={{ backgroundColor: theme.scheme === 'dark' ? theme.background : "#FFFFF9" }}>
       <SafeAreaView edges={['top', 'left', 'right']} className="flex-1">
         {/* Hero — eye image top-right */}
         <View className="mb-6 w-full overflow-hidden" style={{ height: heroBandHeight }}>

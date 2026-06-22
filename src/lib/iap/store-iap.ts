@@ -1,33 +1,10 @@
 import { Platform } from "react-native";
-import {
-  ErrorCode,
-  fetchProducts,
-  finishTransaction,
-  hasActiveSubscriptions,
-  initConnection,
-  purchaseErrorListener,
-  purchaseUpdatedListener,
-  requestPurchase,
-  restorePurchases,
-} from "expo-iap";
-import type {
-  AndroidSubscriptionOfferInput,
-  ProductSubscription,
-  Purchase,
-} from "expo-iap";
-
-function isPurchaseUserCancelled(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const code = (error as { code?: string }).code;
-  return code === ErrorCode.UserCancelled;
-}
-
-/** Default App Store / Play subscription SKUs (override with EXPO_PUBLIC_PLAN_CATALOG_ID_*). */
-const DEFAULT_PRO_SUBSCRIPTION_SKUS = {
-  weekly: "com.tb.weekly",
-  monthly: "com.tb.monthly",
-  yearly: "com.tb.yearly",
-} as const;
+import Purchases, {
+  LOG_LEVEL,
+  PURCHASES_ERROR_CODE,
+  type CustomerInfo,
+  type PurchasesPackage,
+} from "react-native-purchases";
 
 const trimEnv = (value: string | undefined) => {
   const trimmed = (value ?? "").trim();
@@ -40,69 +17,121 @@ const trimEnv = (value: string | undefined) => {
   return unquoted.length > 0 ? unquoted : null;
 };
 
-/** App Store / Play subscription product IDs (configure in ASC + Play Console). */
-export function getProSubscriptionProductIds(): string[] {
-  const weekly =
-    trimEnv(process.env.EXPO_PUBLIC_PLAN_CATALOG_ID_WEEKLY) ??
-    DEFAULT_PRO_SUBSCRIPTION_SKUS.weekly;
-  const monthly =
-    trimEnv(process.env.EXPO_PUBLIC_PLAN_CATALOG_ID_MONTHLY) ??
-    DEFAULT_PRO_SUBSCRIPTION_SKUS.monthly;
-  const yearly =
-    trimEnv(process.env.EXPO_PUBLIC_PLAN_CATALOG_ID_YEARLY) ??
-    DEFAULT_PRO_SUBSCRIPTION_SKUS.yearly;
-  return [weekly, monthly, yearly];
+export function getRevenueCatIosApiKey(): string | null {
+  return trimEnv(process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY);
+}
+
+/** Must match the entitlement identifier configured in the RevenueCat dashboard. */
+export function getRevenueCatEntitlementId(): string {
+  return trimEnv(process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID) ?? "premium";
 }
 
 export function isStoreIapConfigured(): boolean {
-  return getProSubscriptionProductIds().length > 0;
+  return Boolean(getRevenueCatIosApiKey());
 }
 
 export function isStoreIapSupportedPlatform(): boolean {
-  return Platform.OS === "ios" || Platform.OS === "android";
+  return Platform.OS === "ios";
 }
 
-let initPromise: Promise<void> | null = null;
+export type ProSubscriptionPlan = {
+  id: string;
+  displayPrice: string;
+  title: string;
+  package: PurchasesPackage;
+};
 
-export async function ensureStoreIapConnection(): Promise<boolean> {
+let configurePromise: Promise<void> | null = null;
+let linkedUserId: string | null = null;
+
+function hasEntitlement(customerInfo: CustomerInfo): boolean {
+  const entitlementId = getRevenueCatEntitlementId();
+  return customerInfo.entitlements.active[entitlementId] != null;
+}
+
+function sortPlans(plans: ProSubscriptionPlan[]): ProSubscriptionPlan[] {
+  const rank = (id: string) => {
+    const lower = id.toLowerCase();
+    if (lower.includes("week")) return 0;
+    if (lower.includes("month")) return 1;
+    if (lower.includes("year") || lower.includes("annual")) return 2;
+    return 3;
+  };
+  return [...plans].sort((a, b) => rank(a.id) - rank(b.id));
+}
+
+export function isPurchaseUserCancelled(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { userCancelled?: boolean; code?: string | number };
+  if (candidate.userCancelled === true) return true;
+  return candidate.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
+}
+
+export async function ensureStoreIapConnection(options?: {
+  userId?: string | null;
+}): Promise<boolean> {
   if (!isStoreIapSupportedPlatform()) return false;
-  if (!isStoreIapConfigured()) return false;
-  if (!initPromise) {
-    initPromise = Promise.resolve()
-      .then(() => initConnection())
-      .then(() => undefined)
-      .catch((err) => {
-        initPromise = null;
-        throw err;
-      });
+
+  const apiKey = getRevenueCatIosApiKey();
+  if (!apiKey) return false;
+
+  if (!configurePromise) {
+    configurePromise = (async () => {
+      if (__DEV__) {
+        Purchases.setLogLevel(LOG_LEVEL.WARN);
+      }
+      Purchases.configure({ apiKey });
+    })().catch((err) => {
+      configurePromise = null;
+      throw err;
+    });
   }
+
   try {
-    await initPromise;
+    await configurePromise;
+
+    const userId = options?.userId?.trim() ?? null;
+    if (userId && linkedUserId !== userId) {
+      const currentAppUserID = await Purchases.getAppUserID();
+      if (currentAppUserID !== userId) {
+        await Purchases.logIn(userId);
+      }
+      linkedUserId = userId;
+    } else if (!userId) {
+      linkedUserId = null;
+    }
+
     return true;
   } catch {
     return false;
   }
 }
 
-export async function fetchProSubscriptionProducts(): Promise<
-  ProductSubscription[]
-> {
-  const skus = getProSubscriptionProductIds();
-  if (skus.length === 0) return [];
+export async function fetchProSubscriptionProducts(): Promise<ProSubscriptionPlan[]> {
   const ok = await ensureStoreIapConnection();
   if (!ok) return [];
-  const raw = await fetchProducts({ skus, type: "subs" });
-  const list = raw ?? [];
-  return list.filter((p): p is ProductSubscription => p.type === "subs");
+
+  const offerings = await Purchases.getOfferings();
+  const current = offerings.current;
+  if (!current) return [];
+
+  return sortPlans(
+    current.availablePackages.map((pkg) => ({
+      id: pkg.identifier,
+      displayPrice: pkg.product.priceString,
+      title: pkg.product.title,
+      package: pkg,
+    })),
+  );
 }
 
 export async function hasProSubscriptionAccess(): Promise<boolean> {
-  const ids = getProSubscriptionProductIds();
-  if (ids.length === 0) return false;
   const ok = await ensureStoreIapConnection();
   if (!ok) return false;
+
   try {
-    return await hasActiveSubscriptions(ids);
+    const customerInfo = await Purchases.getCustomerInfo();
+    return hasEntitlement(customerInfo);
   } catch {
     return false;
   }
@@ -110,103 +139,50 @@ export async function hasProSubscriptionAccess(): Promise<boolean> {
 
 export async function restoreStorePurchases(): Promise<void> {
   const ok = await ensureStoreIapConnection();
-  if (!ok) throw new Error("Could not connect to the app store.");
-  await restorePurchases();
+  if (!ok) throw new Error("Could not connect to RevenueCat.");
+  await Purchases.restorePurchases();
 }
 
-export function pickAndroidSubscriptionOffer(
-  product: ProductSubscription,
-): AndroidSubscriptionOfferInput | null {
-  if (product.platform !== "android") return null;
-  const legacy = product.subscriptionOfferDetailsAndroid?.[0];
-  if (legacy?.offerToken)
-    return { sku: product.id, offerToken: legacy.offerToken };
-  const offer = product.subscriptionOffers?.find((o) =>
-    Boolean(o.offerTokenAndroid),
-  );
-  if (offer?.offerTokenAndroid)
-    return { sku: product.id, offerToken: offer.offerTokenAndroid };
-  return null;
+/** Opens the native App Store subscription sheet for this app (iOS 13+). */
+export async function showStoreManageSubscriptions(options?: {
+  userId?: string | null;
+}): Promise<boolean> {
+  if (!isStoreIapSupportedPlatform()) return false;
+
+  const ok = await ensureStoreIapConnection(options);
+  if (!ok) return false;
+
+  try {
+    await Purchases.showManageSubscriptions();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function purchaseProSubscription(
-  sku: string,
-  product?: ProductSubscription,
-): Promise<Purchase> {
+  _sku: string,
+  product?: ProSubscriptionPlan,
+): Promise<void> {
+  const pkg = product?.package;
+  if (!pkg) throw new Error("Subscription plan not found.");
+
   const ok = await ensureStoreIapConnection();
-  if (!ok) throw new Error("Could not connect to the app store.");
+  if (!ok) throw new Error("Could not connect to RevenueCat.");
 
-  return new Promise((resolve, reject) => {
-    const unsubOk = purchaseUpdatedListener(async (purchase) => {
-      if (purchase.productId !== sku) return;
-      unsubOk.remove();
-      unsubErr.remove();
-      try {
-        await finishTransaction({ purchase, isConsumable: false });
-        resolve(purchase);
-      } catch (e) {
-        reject(
-          e instanceof Error ? e : new Error("Failed to finalize purchase."),
-        );
-      }
-    });
-    const unsubErr = purchaseErrorListener((error) => {
-      if (error.productId && error.productId !== sku) return;
-      unsubOk.remove();
-      unsubErr.remove();
-      if (isPurchaseUserCancelled(error)) {
-        reject(
-          Object.assign(new Error(error.message || "Purchase cancelled"), {
-            userCancelled: true,
-          }),
-        );
-      } else {
-        reject(new Error(error.message || "Purchase failed."));
-      }
-    });
-
-    void (async () => {
-      try {
-        if (Platform.OS === "ios") {
-          await requestPurchase({
-            type: "subs",
-            request: { apple: { sku } },
-          });
-        } else {
-          const androidProduct =
-            product?.id === sku && product.platform === "android"
-              ? product
-              : (await fetchProSubscriptionProducts()).find(
-                  (p) => p.id === sku && p.platform === "android",
-                );
-          const androidOffer = androidProduct
-            ? pickAndroidSubscriptionOffer(androidProduct)
-            : null;
-          if (!androidOffer) {
-            unsubOk.remove();
-            unsubErr.remove();
-            reject(
-              new Error(
-                "Missing subscription offer for this product on Android.",
-              ),
-            );
-            return;
-          }
-          await requestPurchase({
-            type: "subs",
-            request: {
-              google: {
-                skus: [sku],
-                subscriptionOffers: [androidOffer],
-              },
-            },
-          });
-        }
-      } catch (e) {
-        unsubOk.remove();
-        unsubErr.remove();
-        reject(e instanceof Error ? e : new Error("Purchase failed."));
-      }
-    })();
-  });
+  try {
+    const { customerInfo } = await Purchases.purchasePackage(pkg);
+    if (!hasEntitlement(customerInfo)) {
+      throw new Error(
+        "Purchase completed but an active subscription was not detected yet.",
+      );
+    }
+  } catch (err) {
+    if (isPurchaseUserCancelled(err)) {
+      throw Object.assign(new Error("Purchase cancelled"), {
+        userCancelled: true,
+      });
+    }
+    throw err instanceof Error ? err : new Error("Purchase failed.");
+  }
 }

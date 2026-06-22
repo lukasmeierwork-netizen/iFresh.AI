@@ -1,12 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+import { useAuth } from '@/hooks/use-auth';
+import { useLocalePreference } from '@/hooks/locale-preference-provider';
+import type { DailyTaskLocaleOverlay } from '@/lib/vision/daily-task-locale-cache';
+import {
+  peekCachedDailyTaskLocaleOverlay,
+  readCachedDailyTaskLocaleOverlay,
+  writeCachedDailyTaskLocaleOverlay,
+} from '@/lib/vision/daily-task-locale-cache';
+import {
+  peekCachedDailyTasks,
+  readCachedDailyTasks,
+  writeCachedDailyTasks,
+} from '@/lib/vision/locale-content-cache';
+import {
+  applyLocaleOverlayToTasks,
+  isEnglishTaskLocale,
+  overlayCoversAllTasks,
+} from '@/lib/vision/daily-tasks-localize';
 import {
   fetchDailyTasksForDate,
   setDailyTaskCompletion,
+  translateDailyTasks,
   type DailyTask,
   type DailyTaskPeriod,
 } from '@/lib/vision/daily-tasks-api';
+import { normalizeTaskContentLocale } from '@/lib/vision/task-locales';
 
 const PERIOD_ORDER: readonly DailyTaskPeriod[] = ['morning', 'afternoon', 'evening', 'night'];
 
@@ -37,99 +57,224 @@ export type UseDailyTasksState = {
   date: Date;
   isoDate: string;
   loading: boolean;
+  translating: boolean;
   error: string | null;
+  localeContentMissing: boolean;
   tasks: DailyTask[];
   groups: DailyTaskGroup[];
   totalCount: number;
   completedCount: number;
   toggleTask: (taskId: string, nextCompleted: boolean) => Promise<void>;
-  /**
-   * Re-fetches the existing plan for the selected day. Never regenerates: the
-   * backend only invokes Gemini when no row exists yet, so once a day is
-   * generated the same rows are served until they're explicitly cleared.
-   */
   refresh: () => Promise<void>;
 };
 
 export function useDailyTasks(date: Date): UseDailyTasksState {
-  const { i18n } = useTranslation();
+  const { user } = useAuth();
+  const { resolvedLanguage } = useLocalePreference();
   const isoDate = useMemo(() => toDateOnly(date), [date]);
+  const normalizedLocale = useMemo(
+    () => normalizeTaskContentLocale(resolvedLanguage),
+    [resolvedLanguage],
+  );
 
-  const [tasks, setTasks] = useState<DailyTask[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const cacheInput = useMemo(
+    () => ({
+      userId: user?.id,
+      planDate: isoDate,
+    }),
+    [isoDate, user?.id],
+  );
+
+  const localeCacheInput = useMemo(
+    () => ({
+      userId: user?.id,
+      planDate: isoDate,
+      locale: normalizedLocale,
+    }),
+    [isoDate, normalizedLocale, user?.id],
+  );
+
+  const [sourceTasks, setSourceTasks] = useState<DailyTask[]>(() => {
+    const cached = peekCachedDailyTasks(cacheInput);
+    return cached ? sortTasks(cached) : [];
+  });
+  const [localeOverlay, setLocaleOverlay] = useState<DailyTaskLocaleOverlay | null>(() => {
+    if (isEnglishTaskLocale(normalizedLocale)) return null;
+    return peekCachedDailyTaskLocaleOverlay(localeCacheInput);
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    const cached = peekCachedDailyTasks(cacheInput);
+    return !(cached && cached.length > 0);
+  });
+  const [translating, setTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const requestIdRef = useRef(0);
+  const translateRequestIdRef = useRef(0);
 
-  const load = useCallback(async () => {
-    const reqId = ++requestIdRef.current;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const next = await fetchDailyTasksForDate({
-        planDate: isoDate,
-        locale: i18n.resolvedLanguage ?? i18n.language,
-      });
-      if (requestIdRef.current !== reqId) return;
-      setTasks(sortTasks(next));
-    } catch (err) {
-      if (requestIdRef.current !== reqId) return;
-      const message = err instanceof Error ? err.message : 'Failed to load tasks';
-      setError(message);
-    } finally {
-      if (requestIdRef.current === reqId) {
-        setLoading(false);
+  const loadFromNetwork = useCallback(
+    async (reqId: number) => {
+      try {
+        const next = await fetchDailyTasksForDate({ planDate: isoDate });
+        if (requestIdRef.current !== reqId) return;
+        const sorted = sortTasks(next);
+        setSourceTasks(sorted);
+        if (sorted.length > 0) {
+          void writeCachedDailyTasks({
+            ...cacheInput,
+            tasks: sorted,
+          });
+        }
+      } catch (err) {
+        if (requestIdRef.current !== reqId) return;
+        const message = err instanceof Error ? err.message : 'Failed to load tasks';
+        setError(message);
+      } finally {
+        if (requestIdRef.current === reqId) {
+          setLoading(false);
+        }
       }
+    },
+    [cacheInput, isoDate],
+  );
+
+  const load = useCallback(
+    async (options?: { forceNetwork?: boolean }) => {
+      const reqId = ++requestIdRef.current;
+      setError(null);
+
+      const memoryCached = peekCachedDailyTasks(cacheInput);
+      if (memoryCached && memoryCached.length > 0 && !options?.forceNetwork) {
+        setSourceTasks(sortTasks(memoryCached));
+        setLoading(false);
+        return;
+      }
+
+      const cached = await readCachedDailyTasks(cacheInput);
+      if (requestIdRef.current !== reqId) return;
+
+      if (cached && cached.length > 0 && !options?.forceNetwork) {
+        setSourceTasks(sortTasks(cached));
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      await loadFromNetwork(reqId);
+    },
+    [cacheInput, loadFromNetwork],
+  );
+
+  useLayoutEffect(() => {
+    const cached = peekCachedDailyTasks(cacheInput);
+    if (cached && cached.length > 0) {
+      setSourceTasks(sortTasks(cached));
+      setLoading(false);
+      return;
     }
-  }, [isoDate, i18n.resolvedLanguage, i18n.language]);
+    setSourceTasks([]);
+    setLoading(true);
+  }, [cacheInput]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const toggleTask = useCallback(
-    async (taskId: string, nextCompleted: boolean) => {
-      let previous: DailyTask | null = null;
-      setTasks((current) => {
-        previous = current.find((task) => task.id === taskId) ?? null;
-        if (!previous) return current;
-        return current.map((task) =>
-          task.id === taskId
-            ? {
-                ...task,
-                completed: nextCompleted,
-                completedAt: nextCompleted ? new Date().toISOString() : null,
-              }
-            : task,
-        );
-      });
-      if (!previous) return;
-
-      try {
-        const updated = await setDailyTaskCompletion({ taskId, completed: nextCompleted });
-        if (updated) {
-          setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
-        }
-      } catch (err) {
-        // Roll back optimistic update on failure.
-        const restore = previous;
-        if (restore) {
-          setTasks((current) => current.map((task) => (task.id === taskId ? restore : task)));
-        }
-        const message = err instanceof Error ? err.message : 'Failed to update task';
-        setError(message);
+  useFocusEffect(
+    useCallback(() => {
+      const cached = peekCachedDailyTasks(cacheInput);
+      if (cached && cached.length > 0) {
+        setSourceTasks(sortTasks(cached));
+        setLoading(false);
+        return;
       }
-    },
-    [],
+      void load();
+    }, [cacheInput, load]),
   );
 
-  const refresh = useCallback(async () => {
-    await load();
-  }, [load]);
+  useLayoutEffect(() => {
+    if (sourceTasks.length === 0) {
+      setLocaleOverlay(null);
+      setTranslating(false);
+      return;
+    }
+
+    if (isEnglishTaskLocale(normalizedLocale)) {
+      setLocaleOverlay(null);
+      setTranslating(false);
+      return;
+    }
+
+    const cached = peekCachedDailyTaskLocaleOverlay(localeCacheInput);
+    if (cached && overlayCoversAllTasks(sourceTasks, cached)) {
+      setLocaleOverlay(cached);
+      setTranslating(false);
+      return;
+    }
+
+    const reqId = ++translateRequestIdRef.current;
+    let cancelled = false;
+    setTranslating(true);
+    setError(null);
+
+    void (async () => {
+      const stored = await readCachedDailyTaskLocaleOverlay(localeCacheInput);
+      if (cancelled || translateRequestIdRef.current !== reqId) return;
+
+      if (stored && overlayCoversAllTasks(sourceTasks, stored)) {
+        setLocaleOverlay(stored);
+        setTranslating(false);
+        return;
+      }
+
+      try {
+        const overlay = await translateDailyTasks({
+          locale: normalizedLocale,
+          tasks: sourceTasks,
+        });
+        if (cancelled || translateRequestIdRef.current !== reqId) return;
+
+        await writeCachedDailyTaskLocaleOverlay({
+          ...localeCacheInput,
+          overlay,
+        });
+        setLocaleOverlay(overlay);
+      } catch (err) {
+        if (cancelled || translateRequestIdRef.current !== reqId) return;
+        const message = err instanceof Error ? err.message : 'Failed to translate tasks';
+        setError(message);
+        setLocaleOverlay(null);
+      } finally {
+        if (!cancelled && translateRequestIdRef.current === reqId) {
+          setTranslating(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [localeCacheInput, normalizedLocale, sourceTasks]);
+
+  const tasks = useMemo(
+    () => sortTasks(applyLocaleOverlayToTasks(sourceTasks, localeOverlay, normalizedLocale)),
+    [localeOverlay, normalizedLocale, sourceTasks],
+  );
+
+  const localeContentMissing = useMemo(
+    () =>
+      !loading &&
+      !translating &&
+      !error &&
+      sourceTasks.length > 0 &&
+      !isEnglishTaskLocale(normalizedLocale) &&
+      !overlayCoversAllTasks(sourceTasks, localeOverlay),
+    [error, loading, localeOverlay, normalizedLocale, sourceTasks, translating],
+  );
 
   const groups = useMemo<DailyTaskGroup[]>(() => {
+    if (localeContentMissing || translating) return [];
+
     const buckets = new Map<DailyTaskPeriod, DailyTask[]>();
     for (const period of PERIOD_ORDER) buckets.set(period, []);
     for (const task of tasks) {
@@ -144,18 +289,75 @@ export function useDailyTasks(date: Date): UseDailyTasksState {
         completedCount: list.filter((task) => task.completed).length,
       };
     }).filter((group) => group.tasks.length > 0);
-  }, [tasks]);
+  }, [localeContentMissing, tasks, translating]);
 
-  const completedCount = useMemo(() => tasks.filter((t) => t.completed).length, [tasks]);
+  const toggleTask = useCallback(
+    async (taskId: string, nextCompleted: boolean) => {
+      let previous: DailyTask | null = null;
+
+      const updateTasks = (current: DailyTask[]) => {
+        previous = current.find((task) => task.id === taskId) ?? null;
+        if (!previous) return current;
+        return current.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                completed: nextCompleted,
+                completedAt: nextCompleted ? new Date().toISOString() : null,
+              }
+            : task,
+        );
+      };
+
+      setSourceTasks((current) => {
+        const next = updateTasks(current);
+        void writeCachedDailyTasks({ ...cacheInput, tasks: next });
+        return next;
+      });
+
+      if (!previous) return;
+
+      try {
+        const updated = await setDailyTaskCompletion({ taskId, completed: nextCompleted });
+        if (updated) {
+          setSourceTasks((current) => {
+            const next = current.map((task) => (task.id === updated.id ? updated : task));
+            void writeCachedDailyTasks({ ...cacheInput, tasks: next });
+            return next;
+          });
+        }
+      } catch (err) {
+        const restore = previous;
+        if (restore) {
+          setSourceTasks((current) => {
+            const next = current.map((task) => (task.id === taskId ? restore : task));
+            void writeCachedDailyTasks({ ...cacheInput, tasks: next });
+            return next;
+          });
+        }
+        const message = err instanceof Error ? err.message : 'Failed to update task';
+        setError(message);
+      }
+    },
+    [cacheInput],
+  );
+
+  const refresh = useCallback(async () => {
+    await load({ forceNetwork: true });
+  }, [load]);
+
+  const completedCount = useMemo(() => sourceTasks.filter((t) => t.completed).length, [sourceTasks]);
 
   return {
     date,
     isoDate,
     loading,
+    translating,
     error,
+    localeContentMissing,
     tasks,
     groups,
-    totalCount: tasks.length,
+    totalCount: sourceTasks.length,
     completedCount,
     toggleTask,
     refresh,

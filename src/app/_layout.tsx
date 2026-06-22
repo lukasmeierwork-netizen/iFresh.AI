@@ -6,6 +6,7 @@ import { Stack, useRootNavigationState, useRouter, useSegments } from 'expo-rout
 import * as WebBrowser from 'expo-web-browser';
 import React, { useCallback, useEffect, useState } from 'react';
 import { LogBox, StyleSheet, useColorScheme, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import '../global.css';
 import { AnimatedSplashOverlay } from '@/components/media/animated-icon';
@@ -145,6 +146,10 @@ function GuardedNavigator() {
             options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true }}
           />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="help"
+            options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true }}
+          />
         </Stack>
         {routeGuardLoading ? <View style={styles.loadingRootOverlay} /> : null}
         {splash}
@@ -154,6 +159,9 @@ function GuardedNavigator() {
 }
 
 const styles = StyleSheet.create({
+  gestureRoot: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
@@ -172,15 +180,17 @@ const styles = StyleSheet.create({
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
-    <LocalePreferenceProvider>
-      <AppearancePreferenceProvider>
-        <AuthProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <UsageMonitorRoot />
-            <GuardedNavigator />
-          </ThemeProvider>
-        </AuthProvider>
-      </AppearancePreferenceProvider>
-    </LocalePreferenceProvider>
+    <GestureHandlerRootView style={styles.gestureRoot}>
+      <LocalePreferenceProvider>
+        <AppearancePreferenceProvider>
+          <AuthProvider>
+            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+              <UsageMonitorRoot />
+              <GuardedNavigator />
+            </ThemeProvider>
+          </AuthProvider>
+        </AppearancePreferenceProvider>
+      </LocalePreferenceProvider>
+    </GestureHandlerRootView>
   );
 }

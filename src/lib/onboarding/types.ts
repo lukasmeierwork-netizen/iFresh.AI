@@ -20,7 +20,7 @@ export type TriedEyesightAppAnswer = "stopped" | "still" | "never";
 export type AgeRangeAnswer = "10-17" | "18-29" | "30-44" | "45+";
 
 export type OnboardingDraft = {
-  language?: "system" | "en" | "zh-Hans" | "fr" | "ko";
+  language?: "system" | "en" | "zh-Hans" | "fr" | "ko" | "ja" | "es" | "de";
   screenTime?: ScreenTimeBucket;
   source?: DiscoverySource;
   triedEyesightApp?: TriedEyesightAppAnswer;

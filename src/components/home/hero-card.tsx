@@ -10,6 +10,8 @@ import { useNearVisionDisplayFormat } from '@/hooks/use-near-vision-display-form
 import { useNearVisionLastResult } from '@/hooks/use-near-vision-last-result';
 import { useTheme } from '@/hooks/use-theme';
 import { formatAcuityValue, type NearAcuityResult } from '@/lib/vision/snellen';
+import type { SightDistanceStatus } from '@/lib/vision/near-vision-distance';
+import { sightStatusTranslationKey } from '@/lib/vision/sight-distance-i18n';
 
 type EyeKey = 'both' | 'right' | 'left';
 
@@ -36,6 +38,17 @@ function accentColorForBand(band: AcuityBand): string {
       return Brand.warnAmber;
     case 'poor':
       return Brand.danger;
+  }
+}
+
+function accentColorForSightStatus(status: SightDistanceStatus): string {
+  switch (status) {
+    case 'normal':
+      return Brand.success;
+    case 'shortSighted':
+      return Brand.danger;
+    case 'longSighted':
+      return Brand.warnAmber;
   }
 }
 
@@ -170,14 +183,17 @@ export function HeroCard() {
 
   const hasLatestResult = heroSource !== null;
   const representative = heroSource?.result ?? null;
+  const sightDistanceStatus = value?.sightDistanceStatus ?? null;
 
-  const currentAccent = useMemo(
-    () =>
-      representative
-        ? accentColorForBand(acuityBandFromNSize(representative.nSize))
-        : Brand.warn,
-    [representative],
-  );
+  const currentAccent = useMemo(() => {
+    if (sightDistanceStatus) {
+      return accentColorForSightStatus(sightDistanceStatus);
+    }
+    if (representative) {
+      return accentColorForBand(acuityBandFromNSize(representative.nSize));
+    }
+    return Brand.warn;
+  }, [representative, sightDistanceStatus]);
 
   const sourceLabel = heroSource
     ? heroSource.key === 'both'
@@ -218,9 +234,11 @@ export function HeroCard() {
             />
             <ThemedText
               numberOfLines={1}
-              className="text-[10px] font-bold uppercase tabular-nums tracking-[0.9px]"
+              className="text-[10px] font-bold uppercase tracking-[0.9px]"
               style={{ color: currentAccent }}>
-              N{representative?.nSize ?? '—'}
+              {sightDistanceStatus
+                ? t(sightStatusTranslationKey(sightDistanceStatus))
+                : `N${representative?.nSize ?? '—'}`}
             </ThemedText>
           </View>
         ) : null}

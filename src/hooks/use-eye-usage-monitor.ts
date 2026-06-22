@@ -29,10 +29,24 @@ import {
 } from "@/lib/usage/device-capability";
 import { estimateDistanceCm } from "@/lib/usage/distance-estimator";
 import {
+  createFacePresenceState,
+  resolveStableFaceVisible,
+  type FacePresenceState,
+} from "@/lib/usage/face-presence";
+import {
   createDistanceSmootherState,
   ingestDistanceSample,
+  peekDistanceMedian,
   type DistanceSmootherState,
 } from "@/lib/usage/distance-smoother";
+import {
+  classifyEyeCoverInstant,
+  createEyeCoverTimingState,
+  createEyeCoverVoteState,
+  isHandEyePatchActive,
+  stabilizeEyeCoverState,
+  type EyeCoverState,
+} from "@/lib/usage/eye-cover-classifier";
 import { getUsageSnapshot, updateUsage } from "@/lib/usage/usage-store";
 import { useUsageField } from "@/hooks/use-usage-store";
 
@@ -45,7 +59,16 @@ type FrameSample = {
   timestampMs: number;
 };
 
-type EyeCoverState = "leftCovered" | "rightCovered" | "neither" | "unknown";
+const FACE_WIDTH_WINDOW = 8;
+
+function medianOf(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
 
 type MonitorDeps = {
   device: ReturnType<typeof useCameraDevice>;
@@ -91,16 +114,12 @@ export function useEyeUsageMonitor(): MonitorDeps {
   const blinkRef = useRef<BlinkDetectorState>(createBlinkDetectorState());
   const continuousRef = useRef<ContinuousUseState>(createContinuousUseState());
   const faceMissingSinceRef = useRef<number | null>(null);
-  const eyeCoverVotesRef = useRef<Record<EyeCoverState, number>>({
-    leftCovered: 0,
-    rightCovered: 0,
-    neither: 0,
-    unknown: 0,
-  });
+  const eyeCoverVotesRef = useRef(createEyeCoverVoteState());
   const eyeCoverStableRef = useRef<EyeCoverState>("unknown");
-  const leftLowSinceRef = useRef<number | null>(null);
-  const rightLowSinceRef = useRef<number | null>(null);
-  const bothOpenSinceRef = useRef<number | null>(null);
+  const eyeCoverTimingRef = useRef(createEyeCoverTimingState());
+  const faceWidthSamplesRef = useRef<number[]>([]);
+  const wasHandPatchingRef = useRef(false);
+  const facePresenceRef = useRef<FacePresenceState>(createFacePresenceState());
 
   const isActive =
     monitoringEnabled &&
@@ -133,133 +152,105 @@ export function useEyeUsageMonitor(): MonitorDeps {
       rightEyeOpenProbability,
       timestampMs,
     } = sample;
-    const faceVisible = faceWidthPx > 0 && frameWidthPx > 0;
-    // Eye-open probabilities are noisy by device/lighting.
-    // Use softer thresholds so monocular tests do not require "barely open" eyes.
-    const OPEN_EYE_THRESHOLD = 0.3;
-    const COVERED_EYE_MAX_THRESHOLD = 0.58;
-    const EYE_GAP_THRESHOLD = 0.14;
-    const BOTH_EYES_DIFF_MAX = 0.22;
-    const COVER_HOLD_MS = 320;
-    const BOTH_OPEN_HOLD_MS = 160;
+    const rawFaceDetected = faceWidthPx > 0 && frameWidthPx > 0;
+    const hasEyeSignal =
+      leftEyeOpenProbability != null || rightEyeOpenProbability != null;
 
-    const resolveInstantEyeCoverState = (): EyeCoverState => {
-      if (!faceVisible) return "unknown";
+    const handPatchActiveFromCover =
+      isHandEyePatchActive(eyeCoverStableRef.current) ||
+      (hasEyeSignal &&
+        (leftEyeOpenProbability == null || rightEyeOpenProbability == null));
 
-      // Missing one eye probability is a strong signal of occlusion.
-      if (leftEyeOpenProbability == null && rightEyeOpenProbability != null) {
-        return rightEyeOpenProbability >= OPEN_EYE_THRESHOLD
-          ? "leftCovered"
-          : "unknown";
-      }
-      if (rightEyeOpenProbability == null && leftEyeOpenProbability != null) {
-        return leftEyeOpenProbability >= OPEN_EYE_THRESHOLD
-          ? "rightCovered"
-          : "unknown";
-      }
-      if (leftEyeOpenProbability == null || rightEyeOpenProbability == null) {
-        return "unknown";
-      }
+    const { faceVisible: stableFaceVisible, next: nextFacePresence } =
+      resolveStableFaceVisible({
+        prev: facePresenceRef.current,
+        rawFaceDetected,
+        timestampMs,
+        handPatchActive: handPatchActiveFromCover,
+        hasEyeSignal,
+      });
+    facePresenceRef.current = nextFacePresence;
+    const faceVisible = stableFaceVisible;
 
-      const left = leftEyeOpenProbability;
-      const right = rightEyeOpenProbability;
-      const leftOpen = left >= OPEN_EYE_THRESHOLD;
-      const rightOpen = right >= OPEN_EYE_THRESHOLD;
-      const leftLikelyCovered = left <= COVERED_EYE_MAX_THRESHOLD;
-      const rightLikelyCovered = right <= COVERED_EYE_MAX_THRESHOLD;
-      const leftCoverCandidate =
-        leftLikelyCovered && rightOpen && right - left >= EYE_GAP_THRESHOLD;
-      const rightCoverCandidate =
-        rightLikelyCovered && leftOpen && left - right >= EYE_GAP_THRESHOLD;
-      const bothOpenCandidate =
-        leftOpen && rightOpen && Math.abs(left - right) <= BOTH_EYES_DIFF_MAX;
+    const classifierFacePresent = rawFaceDetected || hasEyeSignal;
 
-      if (leftCoverCandidate) {
-        if (leftLowSinceRef.current == null)
-          leftLowSinceRef.current = timestampMs;
-      } else {
-        leftLowSinceRef.current = null;
-      }
-
-      if (rightCoverCandidate) {
-        if (rightLowSinceRef.current == null)
-          rightLowSinceRef.current = timestampMs;
-      } else {
-        rightLowSinceRef.current = null;
-      }
-
-      if (bothOpenCandidate) {
-        if (bothOpenSinceRef.current == null)
-          bothOpenSinceRef.current = timestampMs;
-      } else {
-        bothOpenSinceRef.current = null;
-      }
-
-      if (
-        leftLowSinceRef.current != null &&
-        timestampMs - leftLowSinceRef.current >= COVER_HOLD_MS
-      ) {
-        return "leftCovered";
-      }
-      if (
-        rightLowSinceRef.current != null &&
-        timestampMs - rightLowSinceRef.current >= COVER_HOLD_MS
-      ) {
-        return "rightCovered";
-      }
-      if (
-        bothOpenSinceRef.current != null &&
-        timestampMs - bothOpenSinceRef.current >= BOTH_OPEN_HOLD_MS
-      ) {
-        return "neither";
-      }
-
-      // Fallback asymmetric rule when classifier hovers around thresholds.
-      if (left + EYE_GAP_THRESHOLD < right && rightOpen) return "leftCovered";
-      if (right + EYE_GAP_THRESHOLD < left && leftOpen) return "rightCovered";
-      return "unknown";
-    };
-
-    const instantEyeCoverState = resolveInstantEyeCoverState();
-    const votes = eyeCoverVotesRef.current;
-    const allStates: EyeCoverState[] = [
-      "leftCovered",
-      "rightCovered",
-      "neither",
-      "unknown",
-    ];
-    for (const state of allStates) {
-      if (state === instantEyeCoverState) {
-        votes[state] = Math.min(8, votes[state] + 2);
-      } else {
-        votes[state] = Math.max(0, votes[state] - 1);
-      }
-    }
-    const stabilized = allStates.reduce(
-      (best, state) => (votes[state] > votes[best] ? state : best),
+    const { state: instantCover, timing: nextTiming } = classifyEyeCoverInstant({
+      faceVisible: classifierFacePresent,
+      leftEyeOpenProbability,
+      rightEyeOpenProbability,
+      timestampMs,
+      timing: eyeCoverTimingRef.current,
+    });
+    eyeCoverTimingRef.current = nextTiming;
+    const { votes, stable: eyeCoverState } = stabilizeEyeCoverState(
+      instantCover,
+      eyeCoverVotesRef.current,
       eyeCoverStableRef.current,
     );
-    const eyeCoverState =
-      votes[stabilized] >= 4 ? stabilized : eyeCoverStableRef.current;
+    eyeCoverVotesRef.current = votes;
     eyeCoverStableRef.current = eyeCoverState;
 
-    let nextDistanceCm: number | null = null;
-    if (faceVisible) {
-      const fov = horizontalFovDegRef.current;
+    const handPatchActive =
+      isHandEyePatchActive(instantCover) ||
+      isHandEyePatchActive(eyeCoverState);
+
+    if (handPatchActive && !wasHandPatchingRef.current && rawFaceDetected) {
+      if (faceWidthSamplesRef.current.length < 3) {
+        faceWidthSamplesRef.current = [faceWidthPx, faceWidthPx, faceWidthPx];
+      }
+    }
+    wasHandPatchingRef.current = handPatchActive;
+
+    const fov = horizontalFovDegRef.current;
+    const ingestDistanceFromWidth = (widthPx: number): number => {
       const raw = estimateDistanceCm({
-        faceWidthPx,
+        faceWidthPx: widthPx,
         frameWidthPx,
         ...(fov != null ? { horizontalFovDeg: fov } : {}),
       });
-      const { next, medianCm } = ingestDistanceSample(distanceRef.current, raw);
+      const { next, medianCm } = ingestDistanceSample(
+        distanceRef.current,
+        raw,
+        { handPatchActive },
+      );
       distanceRef.current = next;
-      nextDistanceCm = medianCm;
+      return medianCm;
+    };
+
+    let nextDistanceCm: number | null = null;
+    if (rawFaceDetected) {
+      faceWidthSamplesRef.current =
+        faceWidthSamplesRef.current.length >= FACE_WIDTH_WINDOW
+          ? [
+              ...faceWidthSamplesRef.current.slice(
+                faceWidthSamplesRef.current.length - FACE_WIDTH_WINDOW + 1,
+              ),
+              faceWidthPx,
+            ]
+          : [...faceWidthSamplesRef.current, faceWidthPx];
+      nextDistanceCm = ingestDistanceFromWidth(faceWidthPx);
       faceMissingSinceRef.current = null;
     } else {
       if (faceMissingSinceRef.current == null) {
         faceMissingSinceRef.current = timestampMs;
       }
-      distanceRef.current = createDistanceSmootherState();
+      const heldFaceWidthPx = medianOf(faceWidthSamplesRef.current);
+      if (
+        handPatchActive &&
+        hasEyeSignal &&
+        heldFaceWidthPx != null &&
+        heldFaceWidthPx > 0 &&
+        frameWidthPx > 0
+      ) {
+        nextDistanceCm = ingestDistanceFromWidth(heldFaceWidthPx);
+      } else if (handPatchActive) {
+        nextDistanceCm =
+          peekDistanceMedian(distanceRef.current) ??
+          getUsageSnapshot().distanceCm;
+      } else {
+        distanceRef.current = createDistanceSmootherState();
+        faceWidthSamplesRef.current = [];
+      }
     }
 
     let nextBlinkRate: number | null = getUsageSnapshot().blinkRate;
@@ -286,6 +277,8 @@ export function useEyeUsageMonitor(): MonitorDeps {
       continuousMinutes,
       faceVisible,
       eyeCoverState,
+      leftEyeOpenProbability,
+      rightEyeOpenProbability,
       lastUpdatedAt: timestampMs,
     });
   };
@@ -385,25 +378,23 @@ export function useEyeUsageMonitor(): MonitorDeps {
   useEffect(() => {
     if (isActive) return;
     distanceRef.current = createDistanceSmootherState();
+    faceWidthSamplesRef.current = [];
+    facePresenceRef.current = createFacePresenceState();
+    wasHandPatchingRef.current = false;
     blinkRef.current = createBlinkDetectorState();
     continuousRef.current = createContinuousUseState();
     faceMissingSinceRef.current = null;
-    eyeCoverVotesRef.current = {
-      leftCovered: 0,
-      rightCovered: 0,
-      neither: 0,
-      unknown: 0,
-    };
+    eyeCoverVotesRef.current = createEyeCoverVoteState();
     eyeCoverStableRef.current = "unknown";
-    leftLowSinceRef.current = null;
-    rightLowSinceRef.current = null;
-    bothOpenSinceRef.current = null;
+    eyeCoverTimingRef.current = createEyeCoverTimingState();
     updateUsage({
       distanceCm: null,
       blinkRate: null,
       continuousMinutes: 0,
       faceVisible: false,
       eyeCoverState: "unknown",
+      leftEyeOpenProbability: null,
+      rightEyeOpenProbability: null,
     });
   }, [isActive]);
 

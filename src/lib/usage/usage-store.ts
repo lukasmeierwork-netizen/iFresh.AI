@@ -23,6 +23,9 @@ export type UsageSnapshot = {
   faceVisible: boolean;
   /** Best-effort eye-cover classification from eye-open probabilities. */
   eyeCoverState: 'leftCovered' | 'rightCovered' | 'neither' | 'unknown';
+  /** Per-eye open scores (user left/right, after front-camera mirroring). */
+  leftEyeOpenProbability: number | null;
+  rightEyeOpenProbability: number | null;
   /** Epoch ms of the last raw detection that updated the store. */
   lastUpdatedAt: number | null;
   /** User preference: whether the background camera monitor is allowed to run. */
@@ -37,6 +40,8 @@ const INITIAL_SNAPSHOT: UsageSnapshot = {
   continuousMinutes: 0,
   faceVisible: false,
   eyeCoverState: 'unknown',
+  leftEyeOpenProbability: null,
+  rightEyeOpenProbability: null,
   lastUpdatedAt: null,
   monitoringEnabled: false,
   monitoringPaused: false,
@@ -88,6 +93,8 @@ export function setMonitoringEnabled(enabled: boolean) {
           continuousMinutes: 0,
           faceVisible: false,
           eyeCoverState: 'unknown',
+          leftEyeOpenProbability: null,
+          rightEyeOpenProbability: null,
         }),
   });
 }
@@ -115,6 +122,8 @@ export function resetUsageMetrics() {
     continuousMinutes: 0,
     faceVisible: false,
     eyeCoverState: 'unknown',
+    leftEyeOpenProbability: null,
+    rightEyeOpenProbability: null,
     lastUpdatedAt: null,
   });
 }

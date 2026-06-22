@@ -6,6 +6,7 @@ import { Pressable, View } from 'react-native';
 import { ThemedText } from '@/components/ui/themed-text';
 import { Brand } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { getDailyTaskDisplayText } from '@/lib/vision/daily-tasks-localize';
 import type { DailyTask } from '@/lib/vision/daily-tasks-api';
 
 type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -163,14 +164,15 @@ type DailyTaskCardProps = {
 };
 
 export function DailyTaskCard({ task, onToggle }: DailyTaskCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const theme = useTheme();
+  const language = i18n.resolvedLanguage ?? i18n.language;
 
   const style = useMemo(() => getCategoryStyle(task.category), [task.category]);
-
-  const categoryLabel = t(`task.category.${task.category}`, {
-    defaultValue: task.category.replace(/-/g, ' ').toUpperCase(),
-  });
+  const display = useMemo(
+    () => getDailyTaskDisplayText(task, t, language),
+    [language, task, t],
+  );
 
   const handleToggle = () => onToggle(task.id, !task.completed);
 
@@ -186,7 +188,7 @@ export function DailyTaskCard({ task, onToggle }: DailyTaskCardProps) {
       accessibilityState={{ checked: task.completed }}
       accessibilityLabel={t('task.toggleA11y', {
         defaultValue: 'Toggle task: {{title}}',
-        title: task.title,
+        title: display.title,
       })}
       onPress={handleToggle}
       style={({ pressed }) => ({
@@ -203,7 +205,7 @@ export function DailyTaskCard({ task, onToggle }: DailyTaskCardProps) {
           <ThemedText
             className="text-[10px] font-bold uppercase tracking-[1.4px]"
             style={{ color: categoryColor }}>
-            {categoryLabel}
+            {display.categoryLabel}
           </ThemedText>
           <ThemedText
             className="mt-0.5 text-[14px] font-semibold leading-5"
@@ -211,15 +213,15 @@ export function DailyTaskCard({ task, onToggle }: DailyTaskCardProps) {
               color: titleColor,
               textDecorationLine: done ? 'line-through' : 'none',
             }}>
-            {task.title}
+            {display.title}
           </ThemedText>
           <ThemedText
-            className="mt-0.5 text-[13px] leading-[18px]"
+            className="mt-0.5 text-[13px] leading-5"
             style={{
               color: bodyColor,
               textDecorationLine: done ? 'line-through' : 'none',
             }}>
-            {task.description}
+            {display.description}
           </ThemedText>
         </View>
 

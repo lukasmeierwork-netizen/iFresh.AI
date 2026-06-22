@@ -1,16 +1,22 @@
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeroCard } from '@/components/home/hero-card';
-import { HomeWeekCalendar } from '@/components/home/home-week-calendar';
 import { QuickActions } from '@/components/home/quick-actions';
+import { DailyTaskProgress } from '@/components/schedule/daily-task-progress';
+import { DailyTasksCompletionCelebration } from '@/components/schedule/daily-tasks-completion-celebration';
+import { DailyTaskSection } from '@/components/schedule/daily-task-section';
 import { TabGlassScreenRoot } from '@/components/ui/glass-home-backdrop';
 import { ThemedText } from '@/components/ui/themed-text';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Brand, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useDailyTasks } from '@/hooks/use-daily-tasks';
+import { useDailyTasksCompletionCelebration } from '@/hooks/use-daily-tasks-completion-celebration';
+import { usePlanDate } from '@/hooks/plan-date-provider';
 import { useTheme } from '@/hooks/use-theme';
 import { useUsageStore } from '@/hooks/use-usage-store';
 import {
@@ -24,8 +30,35 @@ export default function HomeScreen() {
   const safeAreaInsets = useSafeAreaInsets();
   const snapshot = useUsageStore();
 
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const { setSelectedDate } = usePlanDate();
   const [nowMs, setNowMs] = useState(() => Date.now());
+
+  const today = useMemo(() => {
+    const next = new Date(nowMs);
+    next.setHours(0, 0, 0, 0);
+    return next;
+  }, [nowMs]);
+
+  const dailyTasks = useDailyTasks(today);
+  const {
+    loading,
+    translating,
+    error,
+    localeContentMissing,
+    groups,
+    totalCount,
+    completedCount,
+    toggleTask,
+    refresh,
+    isoDate,
+  } = dailyTasks;
+  const { visible: celebrationVisible, dismiss: dismissCelebration } =
+    useDailyTasksCompletionCelebration({
+      planDateIso: isoDate,
+      completed: completedCount,
+      total: totalCount,
+      loading,
+    });
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 15_000);
     return () => clearInterval(id);
@@ -60,6 +93,7 @@ export default function HomeScreen() {
 
   return (
     <TabGlassScreenRoot>
+      <DailyTasksCompletionCelebration visible={celebrationVisible} onDismiss={dismissCelebration} />
       <ScrollView
         className="flex-1"
         contentInsetAdjustmentBehavior="never"
@@ -90,8 +124,8 @@ export default function HomeScreen() {
 
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t('home.openSettingsA11y')}
-                onPress={() => router.push('/settings')}
+                accessibilityLabel={t('home.openHelpA11y')}
+                onPress={() => router.push('/help')}
                 hitSlop={6}>
                 {({ pressed }) => (
                   <View
@@ -101,14 +135,10 @@ export default function HomeScreen() {
                       borderColor: theme.glassBorderStrong,
                       backgroundColor: theme.glassSurfaceRaised,
                     }}>
-                    <SymbolView tintColor={theme.glassIcon} name={'slider.horizontal.3' as any} size={18} />
+                    <SymbolView tintColor={theme.glassIcon} name={'questionmark.circle.fill' as any} size={20} />
                   </View>
                 )}
               </Pressable>
-            </View>
-
-            <View className="px-1">
-              <HomeWeekCalendar value={selectedDate} onChange={setSelectedDate} />
             </View>
 
             <View
@@ -136,14 +166,14 @@ export default function HomeScreen() {
                     style={{ color: theme.glassTextMuted }}>
                     {t('home.todaysPlan')}
                   </ThemedText>
-                  {/* <ThemedText className="text-[20px] font-semibold leading-7 text-white">
-                    {hasTodayPlan ? 'Daily eye care' : 'No schedule yet'}
-                  </ThemedText> */}
                 </View>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t('home.seeScheduleA11y')}
-                  onPress={() => router.push('/task')}
+                  onPress={() => {
+                    setSelectedDate(today);
+                    router.push('/task');
+                  }}
                   style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
                   hitSlop={8}>
                   <ThemedText
@@ -154,16 +184,83 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
 
-              <View className="gap-2 px-1 py-2">
-                <ThemedText
-                  className="text-center text-[15px] font-semibold leading-6"
-                  style={{ color: theme.glassTextPrimary }}>
-                  {t('dailyPlan.noScheduleTitle')}
-                </ThemedText>
-                <ThemedText className="text-center text-[14px] leading-5" style={{ color: theme.glassTextSecondary }}>
-                  {t('dailyPlan.noScheduleHint')}
-                </ThemedText>
-              </View>
+              {loading || translating ? (
+                <View className="items-center gap-3 px-1 py-6">
+                  <ActivityIndicator color={Brand.primary} />
+                  <ThemedText className="text-[14px]" style={{ color: theme.glassTextMuted }}>
+                    {translating
+                      ? t('task.translating')
+                      : t('task.loading', { defaultValue: 'Building today’s routine…' })}
+                  </ThemedText>
+                </View>
+              ) : error ? (
+                <View className="items-center gap-3 px-1 py-4">
+                  <MaterialCommunityIcons
+                    name="alert-circle-outline"
+                    size={28}
+                    color={theme.glassTextSecondary}
+                  />
+                  <ThemedText
+                    className="text-center text-[15px] font-semibold leading-6"
+                    style={{ color: theme.glassTextPrimary }}>
+                    {t('task.errorTitle', { defaultValue: 'Could not load your routine' })}
+                  </ThemedText>
+                  <ThemedText
+                    className="text-center text-[13px] leading-5"
+                    style={{ color: theme.glassTextSecondary }}>
+                    {error}
+                  </ThemedText>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      void refresh();
+                    }}
+                    style={({ pressed }) => ({
+                      opacity: pressed ? 0.85 : 1,
+                      paddingVertical: 10,
+                      paddingHorizontal: 18,
+                      borderRadius: 14,
+                      backgroundColor: Brand.primary,
+                    })}>
+                    <ThemedText className="text-[14px] font-semibold" style={{ color: '#FFFFFF' }}>
+                      {t('task.tryAgain')}
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              ) : localeContentMissing ? (
+                <View className="gap-2 px-1 py-2">
+                  <ThemedText
+                    className="text-center text-[15px] font-semibold leading-6"
+                    style={{ color: theme.glassTextPrimary }}>
+                    {t('task.noLocaleContentTitle')}
+                  </ThemedText>
+                  <ThemedText
+                    className="text-center text-[14px] leading-5"
+                    style={{ color: theme.glassTextSecondary }}>
+                    {t('task.noLocaleContentHint')}
+                  </ThemedText>
+                </View>
+              ) : groups.length === 0 ? (
+                <View className="gap-2 px-1 py-2">
+                  <ThemedText
+                    className="text-center text-[15px] font-semibold leading-6"
+                    style={{ color: theme.glassTextPrimary }}>
+                    {t('dailyPlan.noScheduleTitle')}
+                  </ThemedText>
+                  <ThemedText
+                    className="text-center text-[14px] leading-5"
+                    style={{ color: theme.glassTextSecondary }}>
+                    {t('dailyPlan.noScheduleHint')}
+                  </ThemedText>
+                </View>
+              ) : (
+                <View className="gap-4">
+                  <DailyTaskProgress completed={completedCount} total={totalCount} />
+                  {groups.map((group) => (
+                    <DailyTaskSection key={group.period} group={group} onToggle={toggleTask} />
+                  ))}
+                </View>
+              )}
             </View>
           </View>
         </SafeAreaView>

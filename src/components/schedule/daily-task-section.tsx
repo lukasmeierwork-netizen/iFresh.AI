@@ -63,11 +63,27 @@ export function DailyTaskSection({ group, onToggle }: DailyTaskSectionProps) {
           style={{ backgroundColor: theme.glassSurfaceRaised }}>
           <MaterialCommunityIcons name={PERIOD_ICONS[group.period]} size={18} color={periodIconColor} />
         </View>
-        <ThemedText
-          className="min-w-0 flex-1 text-[16px] font-semibold leading-5 tracking-[-0.2px]"
-          style={{ color: headingColor }}>
-          {periodTitle}
-        </ThemedText>
+        <View className="min-w-0 flex-1 gap-0.5">
+          <ThemedText
+            className="text-[16px] font-semibold leading-5 tracking-[-0.2px]"
+            style={{ color: headingColor }}>
+            {periodTitle}
+          </ThemedText>
+          <ThemedText
+            className="text-[12px] leading-4"
+            style={{ color: theme.glassTextMuted }}>
+            {t(`task.periodHint.${group.period}`, {
+              defaultValue:
+                group.period === 'morning'
+                  ? 'Start your day'
+                  : group.period === 'afternoon'
+                    ? 'Midday habits'
+                    : group.period === 'evening'
+                      ? 'Wind down'
+                      : 'Before sleep',
+            })}
+          </ThemedText>
+        </View>
         <ThemedText
           className="max-w-[48%] shrink-0 text-right text-[12px] font-medium leading-4"
           style={{ color: countColor }}>

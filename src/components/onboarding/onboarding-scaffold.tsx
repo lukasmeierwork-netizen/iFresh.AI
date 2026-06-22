@@ -80,7 +80,7 @@ export function OnboardingScaffold({
   hidePrimary,
   backgroundImage,
   backgroundImageScale = 1,
-  shellBackgroundColor = '#FFFFF9',
+  shellBackgroundColor,
   darkChrome = false,
   primaryFadeIn = false,
 }: OnboardingScaffoldProps) {
@@ -112,8 +112,11 @@ export function OnboardingScaffold({
   const backIcon = darkChrome ? '#FFFFFF' : theme.text;
   const stepCountColor = darkChrome ? 'rgba(255,255,255,0.48)' : theme.textSecondary;
 
+  const defaultBgColor = theme.scheme === 'dark' ? theme.background : '#FFFFF9';
+  const bgColor = shellBackgroundColor ?? defaultBgColor;
+
   return (
-    <View style={{ flex: 1, backgroundColor: shellBackgroundColor }}>
+    <View style={{ flex: 1, backgroundColor: bgColor }}>
       {backgroundImage ? (
         <View
           pointerEvents="none"

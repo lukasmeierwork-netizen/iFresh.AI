@@ -1,11 +1,16 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AnimatedLandoltOverlay } from '@/components/near-vision/animated-landolt-overlay';
@@ -15,14 +20,17 @@ import { ThemedText } from '@/components/ui/themed-text';
 import { Brand, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useNearVisionTest } from '@/hooks/use-near-vision-test';
 import { useNearVisionDisplayFormat } from '@/hooks/use-near-vision-display-format';
+import { useNearVisionEyeCoverGate } from '@/hooks/use-near-vision-eye-cover-gate';
+import { eyeCheckTranslationKey } from '@/lib/usage/eye-cover-classifier';
 import { useTheme } from '@/hooks/use-theme';
 import { useUsageField } from '@/hooks/use-usage-store';
 import {
-  isWithinFocusRange,
+  getFocusRangeBandLeave,
+  isWithinDisplayedFocusRange,
   NEAR_VISION_TARGET_CM,
-  NEAR_VISION_TOLERANCE_CM,
 } from '@/lib/vision/near-vision-config';
 import { loadNearVisionInputMode, type NearVisionInputMode } from '@/lib/vision/near-vision-storage';
+import { sightStatusTranslationKey } from '@/lib/vision/sight-distance-i18n';
 import { formatAcuityValue } from '@/lib/vision/snellen';
 
 export default function NearVisionScreen() {
@@ -31,12 +39,15 @@ export default function NearVisionScreen() {
   const theme = useTheme();
   const safeAreaInsets = useSafeAreaInsets();
   const [inputMode, setInputMode] = useState<NearVisionInputMode>('swipe');
+  const [gaugeWidthPx, setGaugeWidthPx] = useState(0);
+  const [lastGaugeDistanceCm, setLastGaugeDistanceCm] = useState<number | null>(null);
   const { displayFormat } = useNearVisionDisplayFormat();
 
   const {
     step,
     setStep,
     liveDistanceCm,
+    stabilizedDistanceCm,
     handleLiveDistance,
     inValidFocusRange,
     landoltSizePx,
@@ -50,11 +61,16 @@ export default function NearVisionScreen() {
     pendingEyeInstruction,
     activeEye,
     startPendingEye,
+    beginTestFlow,
     rightResult,
     leftResult,
     bothResult,
+    averageDistanceCm,
+    sightDistanceStatus,
   } = useNearVisionTest();
-  const eyeCoverState = useUsageField('eyeCoverState');
+  const faceVisible = useUsageField('faceVisible');
+  const leftEyeOpenProbability = useUsageField('leftEyeOpenProbability');
+  const rightEyeOpenProbability = useUsageField('rightEyeOpenProbability');
 
   const insets = useMemo(
     () => ({
@@ -77,29 +93,43 @@ export default function NearVisionScreen() {
   const bodyMuted = theme.glassTextSecondary;
   const heading = theme.glassTextPrimary;
 
+  const validRange = useMemo(() => getFocusRangeBandLeave(), []);
+
+  const gaugeDistanceCm = liveDistanceCm ?? stabilizedDistanceCm ?? lastGaugeDistanceCm;
+
+  useEffect(() => {
+    if (liveDistanceCm != null) {
+      setLastGaugeDistanceCm(liveDistanceCm);
+    }
+  }, [liveDistanceCm]);
+
+  const isInDisplayedFocusRange = isWithinDisplayedFocusRange(gaugeDistanceCm);
+
   const pageBorderColor = useMemo(() => {
-    if (liveDistanceCm == null) return theme.textSecondary;
-    return isWithinFocusRange(liveDistanceCm) ? Brand.success : Brand.danger;
-  }, [liveDistanceCm, theme.textSecondary]);
+    if (gaugeDistanceCm == null) {
+      return theme.textSecondary;
+    }
+    return isInDisplayedFocusRange ? Brand.success : Brand.danger;
+  }, [gaugeDistanceCm, isInDisplayedFocusRange, theme.textSecondary]);
 
   const distanceLabel = useMemo(() => {
-    if (liveDistanceCm == null || Number.isNaN(liveDistanceCm)) return t('nearVision.distanceUnknown');
-    return t('nearVision.distanceCm', { cm: Math.round(liveDistanceCm) });
-  }, [liveDistanceCm, t]);
-  const validRange = useMemo(() => {
-    const minCm = Math.max(1, Math.round(NEAR_VISION_TARGET_CM - NEAR_VISION_TOLERANCE_CM));
-    const maxCm = Math.max(minCm, Math.round(NEAR_VISION_TARGET_CM + NEAR_VISION_TOLERANCE_CM));
-    return { minCm, maxCm };
-  }, []);
+    if (gaugeDistanceCm == null || Number.isNaN(gaugeDistanceCm)) {
+      return t('nearVision.distanceUnknown');
+    }
+    return t('nearVision.distanceCm', { cm: Math.round(gaugeDistanceCm) });
+  }, [gaugeDistanceCm, t]);
+
   const distanceGauge = useMemo(() => {
     const validSpan = Math.max(2, validRange.maxCm - validRange.minCm);
     const sidePaddingCm = Math.max(6, Math.round(validSpan * 0.75));
     const gaugeMinCm = Math.max(1, validRange.minCm - sidePaddingCm);
     const gaugeMaxCm = Math.max(gaugeMinCm + 1, validRange.maxCm + sidePaddingCm);
     const gaugeSpan = gaugeMaxCm - gaugeMinCm;
-    const currentCm = liveDistanceCm ?? NEAR_VISION_TARGET_CM;
-    const clampedCurrentCm = Math.max(gaugeMinCm, Math.min(gaugeMaxCm, currentCm));
-    const markerRatio = (clampedCurrentCm - gaugeMinCm) / gaugeSpan;
+    const markerRatio =
+      gaugeDistanceCm == null
+        ? null
+        : (Math.max(gaugeMinCm, Math.min(gaugeMaxCm, gaugeDistanceCm)) - gaugeMinCm) /
+          gaugeSpan;
     const validStartRatio = (validRange.minCm - gaugeMinCm) / gaugeSpan;
     const validEndRatio = (validRange.maxCm - gaugeMinCm) / gaugeSpan;
     return {
@@ -109,47 +139,51 @@ export default function NearVisionScreen() {
       validStartRatio,
       validEndRatio,
     };
-  }, [liveDistanceCm, validRange.maxCm, validRange.minCm]);
-  const isDistanceWithinDisplayedValidRange = useMemo(() => {
-    if (liveDistanceCm == null || Number.isNaN(liveDistanceCm)) return false;
-    return liveDistanceCm >= validRange.minCm && liveDistanceCm <= validRange.maxCm;
-  }, [liveDistanceCm, validRange.maxCm, validRange.minCm]);
+  }, [gaugeDistanceCm, validRange.maxCm, validRange.minCm]);
 
-  const requiredEyeCoverState =
-    activeEye === 'right' ? 'leftCovered' : activeEye === 'left' ? 'rightCovered' : 'neither';
-  const EYE_COVER_GRACE_MS = 2400;
-  const EYE_COVER_MISMATCH_HOLD_MS = 1800;
-  const lastEyeCoverMatchAtRef = useRef<number | null>(null);
-  const lastEyeCoverMismatchAtRef = useRef<number | null>(null);
-  const hasEverMatchedEyeCoverRef = useRef(false);
+  const markerCenterPx = useMemo(() => {
+    if (gaugeWidthPx <= 0 || distanceGauge.markerRatio == null) return null;
+    return distanceGauge.markerRatio * gaugeWidthPx;
+  }, [distanceGauge.markerRatio, gaugeWidthPx]);
+
+  const markerCenterX = useSharedValue(0);
+  const tooltipAnimatedStyle = useAnimatedStyle(() => ({
+    left: markerCenterX.value - 32,
+  }));
+  const thumbAnimatedStyle = useAnimatedStyle(() => ({
+    left: markerCenterX.value - 12,
+  }));
 
   useEffect(() => {
-    const now = Date.now();
-    if (eyeCoverState === requiredEyeCoverState) {
-      lastEyeCoverMatchAtRef.current = now;
-      lastEyeCoverMismatchAtRef.current = null;
-      hasEverMatchedEyeCoverRef.current = true;
-      return;
-    }
-    // Unknown is often a transient camera/classifier dropout while the eye
-    // is still covered correctly, so do not immediately start mismatch timing.
-    if (eyeCoverState === 'unknown') {
-      return;
-    }
-    if (lastEyeCoverMismatchAtRef.current == null) {
-      lastEyeCoverMismatchAtRef.current = now;
-    }
-  }, [eyeCoverState, requiredEyeCoverState]);
+    if (markerCenterPx == null) return;
+    markerCenterX.value = withTiming(markerCenterPx, { duration: 140 });
+  }, [markerCenterPx, markerCenterX]);
 
-  const now = Date.now();
-  const recentMatched =
-    lastEyeCoverMatchAtRef.current != null && now - lastEyeCoverMatchAtRef.current <= EYE_COVER_GRACE_MS;
-  const mismatchConfirmed =
-    lastEyeCoverMismatchAtRef.current != null && now - lastEyeCoverMismatchAtRef.current >= EYE_COVER_MISMATCH_HOLD_MS;
-  const eyeCoverMatches =
-    eyeCoverState === requiredEyeCoverState ||
-    (hasEverMatchedEyeCoverRef.current && (recentMatched || !mismatchConfirmed));
-  const showLandolt = inValidFocusRange && eyeCoverMatches;
+  const isDistanceWithinDisplayedValidRange = isInDisplayedFocusRange;
+
+  const {
+    evaluation,
+    eyeCoverMatches,
+    showLandolt,
+    needsCoverInstruction,
+    needsTestEyeVisible,
+    needsCoveredEyeHidden,
+    needsFaceVisible,
+    effectiveFaceVisible,
+    manualPatchConfirmed,
+    showManualPatchButton,
+    confirmManualPatch,
+  } = useNearVisionEyeCoverGate({
+    activeEye,
+    faceVisible,
+    leftEyeOpenProbability,
+    rightEyeOpenProbability,
+    inValidFocusRange,
+  });
+
+  const requiredEyeCoverState = evaluation.requiredCoverState;
+  const inferredEyeCoverState = evaluation.inferredCoverState;
+
   const eyeCoverInstruction = useMemo(() => {
     if (requiredEyeCoverState === 'leftCovered') return t('nearVision.eyeCoverRequired.leftCovered');
     if (requiredEyeCoverState === 'rightCovered') return t('nearVision.eyeCoverRequired.rightCovered');
@@ -162,15 +196,23 @@ export default function NearVisionScreen() {
     return t('settings.permissionUnknown');
   }, [requiredEyeCoverState, t]);
   const detectedEyeCoverLabel = useMemo(() => {
-    if (eyeCoverState === 'leftCovered') return t('nearVision.leftEye');
-    if (eyeCoverState === 'rightCovered') return t('nearVision.rightEye');
-    if (eyeCoverState === 'neither') return t('nearVision.bothEyes');
-    return t('settings.permissionUnknown');
-  }, [eyeCoverState, t]);
+    const { leftStatus, rightStatus, setupReady } = evaluation;
+    if (!effectiveFaceVisible) {
+      return t('nearVision.eyeCheck.faceNotVisible');
+    }
+    if (setupReady || eyeCoverMatches || manualPatchConfirmed) {
+      if (activeEye === 'right') return t('nearVision.eyeCheck.readyRight');
+      if (activeEye === 'left') return t('nearVision.eyeCheck.readyLeft');
+      return t('nearVision.eyeCheck.readyBoth');
+    }
+    const leftLabel = t(eyeCheckTranslationKey('left', leftStatus));
+    const rightLabel = t(eyeCheckTranslationKey('right', rightStatus));
+    return `${leftLabel} · ${rightLabel}`;
+  }, [activeEye, effectiveFaceVisible, evaluation, eyeCoverMatches, manualPatchConfirmed, t]);
 
   const instructionOverlayLines = useMemo(() => {
     const lines: string[] = [];
-    if (!inValidFocusRange) {
+    if (!isInDisplayedFocusRange) {
       lines.push(
         t('nearVision.holdDistanceBullet', {
           cm: NEAR_VISION_TARGET_CM,
@@ -179,12 +221,46 @@ export default function NearVisionScreen() {
         })
       );
     }
-    if (!eyeCoverMatches) {
+    if (needsFaceVisible) {
+      lines.push(t('nearVision.faceRequired'));
+    }
+    if (needsCoverInstruction) {
       lines.push(eyeCoverInstruction);
+    }
+    if (needsTestEyeVisible) {
+      const eyeLabel =
+        activeEye === 'right'
+          ? t('nearVision.rightEye')
+          : activeEye === 'left'
+            ? t('nearVision.leftEye')
+            : t('nearVision.bothEyes');
+      lines.push(t('nearVision.testEyeVisibleRequired', { eye: eyeLabel }));
+    }
+    if (needsCoveredEyeHidden) {
+      const eyeLabel =
+        activeEye === 'right'
+          ? t('nearVision.leftEye')
+          : activeEye === 'left'
+            ? t('nearVision.rightEye')
+            : '';
+      if (eyeLabel) {
+        lines.push(t('nearVision.coveredEyeMustHide', { eye: eyeLabel }));
+      }
     }
     lines.push(t('nearVision.swipeWhenVisible'));
     return lines;
-  }, [eyeCoverInstruction, eyeCoverMatches, inValidFocusRange, t, validRange.maxCm, validRange.minCm]);
+  }, [
+    activeEye,
+    eyeCoverInstruction,
+    needsCoverInstruction,
+    needsCoveredEyeHidden,
+    needsFaceVisible,
+    needsTestEyeVisible,
+    isInDisplayedFocusRange,
+    t,
+    validRange.maxCm,
+    validRange.minCm,
+  ]);
 
   const landoltPanGesture = useMemo(
     () =>
@@ -233,7 +309,7 @@ export default function NearVisionScreen() {
 
     return (
       <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.background }}>
-        <NearVisionDistanceEvaluator active targetDistanceCm={NEAR_VISION_TARGET_CM} toleranceCm={NEAR_VISION_TOLERANCE_CM} onDistanceEstimate={handleLiveDistance} />
+        <NearVisionDistanceEvaluator active onDistanceEstimate={handleLiveDistance} />
         <View
           style={{
             flex: 1,
@@ -309,38 +385,70 @@ export default function NearVisionScreen() {
 
           {showInstructionOverlay ? (
             <View
-              pointerEvents="none"
+              pointerEvents="box-none"
               style={[
                 StyleSheet.absoluteFillObject,
                 { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, zIndex: 8 },
               ]}>
-              <LinearGradient
-                colors={['rgba(255, 232, 232, 0.94)', 'rgba(255, 205, 205, 0.9)', 'rgba(255, 220, 220, 0.92)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{
-                  width: '100%',
-                  maxWidth: 400,
-                  borderRadius: 22,
-                  paddingVertical: 22,
-                  paddingHorizontal: 20,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: 'rgba(239, 68, 68, 0.35)',
-                }}>
-                <ThemedText
-                  className="mb-3 text-center text-[15px] font-semibold leading-5"
-                  style={{ color: '#991B1B' }}>
-                  {t('nearVision.followSteps')}
-                </ThemedText>
-                {instructionOverlayLines.map((line, i) => (
+              <View pointerEvents="auto" style={{ width: '100%', maxWidth: 400 }}>
+                <LinearGradient
+                  colors={['rgba(255, 232, 232, 0.94)', 'rgba(255, 205, 205, 0.9)', 'rgba(255, 220, 220, 0.92)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{
+                    width: '100%',
+                    borderRadius: 22,
+                    paddingVertical: 22,
+                    paddingHorizontal: 20,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: 'rgba(239, 68, 68, 0.35)',
+                  }}>
                   <ThemedText
-                    key={`${i}-${line}`}
-                    className="text-[13px] leading-[19px]"
-                    style={{ color: '#7F1D1D', marginBottom: i === instructionOverlayLines.length - 1 ? 0 : 10 }}>
-                    {`\u2022 ${line}`}
+                    className="mb-3 text-center text-[15px] font-semibold leading-5"
+                    style={{ color: '#991B1B' }}>
+                    {t('nearVision.followSteps')}
                   </ThemedText>
-                ))}
-              </LinearGradient>
+                  {instructionOverlayLines.map((line, i) => (
+                    <ThemedText
+                      key={`${i}-${line}`}
+                      className="text-[13px] leading-[19px]"
+                      style={{
+                        color: '#7F1D1D',
+                        marginBottom:
+                          i === instructionOverlayLines.length - 1 && !showManualPatchButton ? 0 : 10,
+                      }}>
+                      {`\u2022 ${line}`}
+                    </ThemedText>
+                  ))}
+                  {showManualPatchButton ? (
+                    <>
+                      <ThemedText
+                        className="mt-1 text-[12px] leading-[17px]"
+                        style={{ color: '#7F1D1D', marginBottom: 12 }}>
+                        {t('nearVision.manualPatchHint')}
+                      </ThemedText>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t('nearVision.manualPatchConfirmA11y', {
+                          eye: requiredEyeCoverLabel,
+                        })}
+                        onPress={confirmManualPatch}
+                        style={({ pressed }) => ({
+                          opacity: pressed ? 0.88 : 1,
+                          backgroundColor: '#16A34A',
+                          borderRadius: 14,
+                          paddingVertical: 14,
+                          paddingHorizontal: 16,
+                          alignItems: 'center',
+                        })}>
+                        <ThemedText className="text-[15px] font-semibold" style={{ color: '#FFFFFF' }}>
+                          {t('nearVision.manualPatchConfirm', { eye: requiredEyeCoverLabel })}
+                        </ThemedText>
+                      </Pressable>
+                    </>
+                  ) : null}
+                </LinearGradient>
+              </View>
             </View>
           ) : null}
 
@@ -371,7 +479,14 @@ export default function NearVisionScreen() {
                 {`${validRange.minCm}-${validRange.maxCm} cm`}
               </ThemedText>
             </View> */}
-            <View className="mt-4 w-full">
+            <View
+              className="mt-4 w-full"
+              onLayout={(event) => {
+                const width = event.nativeEvent.layout.width;
+                if (width > 0) {
+                  setGaugeWidthPx(width);
+                }
+              }}>
               <View
                 style={{
                   position: 'absolute',
@@ -396,19 +511,24 @@ export default function NearVisionScreen() {
                   borderColor: theme.scheme === 'dark' ? 'rgba(148,163,184,0.3)' : '#D1D5DB',
                 }}
               />
-              <View
-                style={{
-                  position: 'absolute',
-                  left: `${distanceGauge.markerRatio * 100}%`,
-                  top: -48,
-                  marginLeft: -32,
-                  minWidth: 64,
-                  alignItems: 'center',
-                  borderRadius: 12,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  backgroundColor: isDistanceWithinDisplayedValidRange ? Brand.success : '#EF4444',
-                }}>
+              <Animated.View
+                style={[
+                  {
+                    position: 'absolute',
+                    top: -48,
+                    minWidth: 64,
+                    alignItems: 'center',
+                    borderRadius: 12,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    backgroundColor: isDistanceWithinDisplayedValidRange ? Brand.success : '#EF4444',
+                  },
+                  markerCenterPx != null
+                    ? tooltipAnimatedStyle
+                    : distanceGauge.markerRatio != null
+                      ? { left: `${distanceGauge.markerRatio * 100}%`, marginLeft: -32 }
+                      : { left: 0, opacity: 0 },
+                ]}>
                 <ThemedText className="text-[11px] font-semibold" style={{ color: '#FFFFFF' }}>
                   {distanceLabel}
                 </ThemedText>
@@ -424,7 +544,7 @@ export default function NearVisionScreen() {
                     backgroundColor: isDistanceWithinDisplayedValidRange ? Brand.success : '#EF4444',
                   }}
                 />
-              </View>
+              </Animated.View>
               <View
                 style={{
                   height: 11,
@@ -443,19 +563,24 @@ export default function NearVisionScreen() {
                     opacity: 1,
                   }}
                 />
-                <View
-                  style={{
-                    position: 'absolute',
-                    left: `${distanceGauge.markerRatio * 100}%`,
-                    top: -7,
-                    width: 24,
-                    height: 24,
-                    borderRadius: 12,
-                    marginLeft: -12,
-                    backgroundColor: isDistanceWithinDisplayedValidRange ? Brand.success : '#EF4444',
-                    borderWidth: 4,
-                    borderColor: theme.scheme === 'dark' ? '#F8FAFC' : '#FFFFFF',
-                  }}
+                <Animated.View
+                  style={[
+                    {
+                      position: 'absolute',
+                      top: -7,
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      backgroundColor: isDistanceWithinDisplayedValidRange ? Brand.success : '#EF4444',
+                      borderWidth: 4,
+                      borderColor: theme.scheme === 'dark' ? '#F8FAFC' : '#FFFFFF',
+                    },
+                    markerCenterPx != null
+                      ? thumbAnimatedStyle
+                      : distanceGauge.markerRatio != null
+                        ? { left: `${distanceGauge.markerRatio * 100}%`, marginLeft: -12 }
+                        : { left: 0, opacity: 0 },
+                  ]}
                 />
               </View>
               <View className="mt-2 flex-row items-center justify-between">
@@ -805,11 +930,33 @@ export default function NearVisionScreen() {
                   </View>
                 </View>
 
+                {sightDistanceStatus ? (
+                  <View
+                    className="flex-row items-center justify-between rounded-2xl border px-4 py-4"
+                    style={{ borderColor: divider, backgroundColor: theme.glassSurfaceRaised }}>
+                    <ThemedText className="text-[14px] font-semibold" style={{ color: heading }}>
+                      {t('nearVision.sightStatusLabel')}
+                    </ThemedText>
+                    <View className="items-end gap-0.5">
+                      <ThemedText className="text-[16px] font-semibold" style={{ color: heading }}>
+                        {t(sightStatusTranslationKey(sightDistanceStatus))}
+                      </ThemedText>
+                      {averageDistanceCm != null ? (
+                        <ThemedText className="text-[12px]" style={{ color: bodyMuted }}>
+                          {t('nearVision.averageDistanceCm', {
+                            cm: Math.round(averageDistanceCm),
+                          })}
+                        </ThemedText>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : null}
+
                 <View className="gap-3">
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={t('nearVision.runAgainA11y')}
-                    onPress={() => setStep('ready')}
+                    onPress={beginTestFlow}
                     style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}>
                     <View className="items-center rounded-2xl px-4 py-4" style={{ backgroundColor: Brand.primary }}>
                       <ThemedText className="text-[15px] font-semibold" style={{ color: '#FFFFFF' }}>

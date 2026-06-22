@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,11 +14,11 @@ import { useNearVisionLastResult } from '@/hooks/use-near-vision-last-result';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function ScanScreen() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const theme = useTheme();
   const router = useRouter();
   const safeAreaInsets = useSafeAreaInsets();
-  const { value, history, insight, loading, refresh } = useNearVisionLastResult();
+  const { history, insight, historyLoading, insightLoading } = useNearVisionLastResult();
   const { displayFormat } = useNearVisionDisplayFormat();
 
   const insets = useMemo(
@@ -28,10 +28,6 @@ export default function ScanScreen() {
     }),
     [safeAreaInsets]
   );
-
-  useEffect(() => {
-    void refresh(i18n.language);
-  }, [i18n.language, refresh]);
 
   const startTest = () => router.push({ pathname: '/near-vision' });
 
@@ -101,8 +97,8 @@ export default function ScanScreen() {
                 <NearVisionHistoryGraph
                   history={history}
                   insight={insight}
-                  insightLoading={loading}
-                  loading={loading}
+                  insightLoading={insightLoading}
+                  loading={historyLoading}
                   displayFormat={displayFormat}
                 />
               </View>

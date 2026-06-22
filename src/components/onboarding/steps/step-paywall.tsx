@@ -1,4 +1,3 @@
-import type { ProductSubscription } from 'expo-iap';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 
@@ -10,32 +9,19 @@ import {
   ensureStoreIapConnection,
   fetchProSubscriptionProducts,
   hasProSubscriptionAccess,
+  isPurchaseUserCancelled,
   isStoreIapConfigured,
   isStoreIapSupportedPlatform,
   purchaseProSubscription,
   restoreStorePurchases,
+  type ProSubscriptionPlan,
 } from '@/lib/iap/store-iap';
 
 type Props = {
   onUnlocked: (planCatalogId: string | null) => void | Promise<void>;
 };
 
-function isCancelledPurchaseError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const candidate = err as {
-    userCancelled?: boolean;
-    code?: string;
-    message?: string;
-  };
-  if (candidate.userCancelled === true) return true;
-  const code = (candidate.code ?? '').toString().toLowerCase();
-  if (code === 'user-cancelled' || code.includes('user_cancelled')) return true;
-  if (code.includes('PURCHASE_CANCELLED')) return true;
-  const msg = (candidate.message ?? '').toString().toLowerCase();
-  return msg.includes('purchase was cancelled') || msg.includes('purchase cancelled');
-}
-
-function getPlanMeta(item: ProductSubscription): { label: string; caption: string; highlight?: string } {
+function getPlanMeta(item: ProSubscriptionPlan): { label: string; caption: string; highlight?: string } {
   const id = item.id.toLowerCase();
   const title = item.title.toLowerCase();
   const key = `${id} ${title}`;
@@ -66,20 +52,9 @@ function getPlanMeta(item: ProductSubscription): { label: string; caption: strin
   };
 }
 
-function sortSubscriptions(products: ProductSubscription[]) {
-  const rank = (id: string) => {
-    const lower = id.toLowerCase();
-    if (lower.includes('week')) return 0;
-    if (lower.includes('month')) return 1;
-    if (lower.includes('year') || lower.includes('annual')) return 2;
-    return 3;
-  };
-  return [...products].sort((a, b) => rank(a.id) - rank(b.id));
-}
-
 export function StepPaywall({ onUnlocked }: Props) {
   const { user } = useAuth();
-  const [products, setProducts] = useState<ProductSubscription[]>([]);
+  const [products, setProducts] = useState<ProSubscriptionPlan[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
@@ -104,19 +79,17 @@ export function StepPaywall({ onUnlocked }: Props) {
       setLoading(true);
 
       if (!isStoreIapSupportedPlatform()) {
-        setError('Subscriptions are available on the iOS and Android apps.');
+        setError('Subscriptions are available on the iOS app.');
         return;
       }
       if (!isStoreIapConfigured()) {
-        setError(
-          'Store products are not configured. Set EXPO_PUBLIC_PLAN_CATALOG_ID_WEEKLY, MONTHLY, and/or YEARLY.',
-        );
+        setError('RevenueCat is not configured. Set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY.');
         return;
       }
 
-      const connected = await ensureStoreIapConnection();
+      const connected = await ensureStoreIapConnection({ userId: user.id });
       if (!connected) {
-        setError('Could not connect to the app store. Try again on a device with the store signed in.');
+        setError('Could not connect to RevenueCat. Try again on a device with the App Store signed in.');
         return;
       }
 
@@ -125,13 +98,13 @@ export function StepPaywall({ onUnlocked }: Props) {
         return;
       }
 
-      const available = sortSubscriptions(await fetchProSubscriptionProducts());
+      const available = await fetchProSubscriptionProducts();
       setProducts(available);
       setSelectedProductId((prev) => prev ?? available[0]?.id ?? null);
 
       if (available.length === 0) {
         setError(
-          'No subscription products returned from the store. Confirm product IDs in App Store Connect and Play Console.',
+          'No subscription plans returned from RevenueCat. Confirm your default offering and App Store products.',
         );
       }
     } catch (err) {
@@ -157,7 +130,7 @@ export function StepPaywall({ onUnlocked }: Props) {
         setError('Purchase completed but an active subscription was not detected yet. Try Restore purchases.');
       }
     } catch (err: unknown) {
-      if (!isCancelledPurchaseError(err)) {
+      if (!isPurchaseUserCancelled(err)) {
         setError(err instanceof Error ? err.message : 'Purchase failed. Please try again.');
       }
     } finally {

@@ -1,4 +1,6 @@
 import { withPartial } from "./locale-shell";
+import { helpZhHans } from "./help-translations";
+import { taskTabZhHans } from "./task-tab-translations";
 
 export const zhHans = withPartial({
   tabs: {
@@ -102,6 +104,13 @@ export const zhHans = withPartial({
     shareAppA11y: "分享 EyeFresh AI",
     rateUs: "为我们评分",
     rateUsA11y: "在应用商店为 EyeFresh AI 评分",
+    rateUsModalCloseA11y: "关闭评分对话框",
+    rateUsModalEmailLabel: "你的邮箱",
+    rateUsModalEmailPlaceholder: "输入邮箱地址",
+    rateUsModalFeedbackLabel: "请告诉我们有什么问题",
+    rateUsModalFeedbackPlaceholder: "描述问题或建议…",
+    rateUsModalSubmit: "提交",
+    rateUsFeedbackEmailSubject: "EyeFresh AI — 应用反馈",
     rateUsUnavailableTitle: "暂时无法评分",
     rateUsUnavailableMessage: "请更新设备或直接在应用商店为我们评分。",
     requestFeature: "功能建议",
@@ -136,8 +145,9 @@ export const zhHans = withPartial({
     monitoringCameraBusy: "相机正被其他任务占用",
     todaysPlan: "今日计划",
     seeAll: "查看全部",
-    openSettingsA11y: "打开设置",
+    openHelpA11y: "打开帮助指南",
     seeScheduleA11y: "查看完整日程",
+    selectedDateA11y: "所选日期：{{date}}",
   },
   assistant: {
     title: "助手",
@@ -207,6 +217,7 @@ export const zhHans = withPartial({
     newPlanStartDate: "新计划开始日期",
     preparing: "准备中…",
     startNewPlan: "新计划开始：{{date}}",
+    ...taskTabZhHans,
   },
   schedulePlanner: {
     daySun: "日",
@@ -293,6 +304,7 @@ export const zhHans = withPartial({
   hero: {
     nearVision: "近距离视力",
     noTestYet: "尚无检测记录",
+    noRecordsForDate: "该日期暂无视力记录。",
     takeTest: "进行近距离视力检测",
     currentResult: "当前结果",
     rightEye: "右眼",
@@ -301,6 +313,11 @@ export const zhHans = withPartial({
     rightEyeShort: "右眼",
     leftEyeShort: "左眼",
     bothEyesShort: "双眼",
+    sightStatus: {
+      shortSighted: "可能近视",
+      longSighted: "可能远视",
+      normal: "视力安全",
+    },
   },
   quickActions: {
     startTest: "开始检测",
@@ -316,6 +333,8 @@ export const zhHans = withPartial({
     periodNight: "夜间",
     noScheduleTitle: "暂无日程",
     noScheduleHint: "打开「日程」查看其他日期或创建新计划。",
+    noTasksForDate: "该日期暂无任务。",
+    noTasksForDateHint: "打开「日程」查看其他日期，或请助手生成计划。",
   },
   usageChart: {
     title: "今日屏幕时间",
@@ -341,6 +360,15 @@ export const zhHans = withPartial({
     holdDistanceBullet: "将手机保持在距离眼睛约 {{cm}} 厘米，直到边框变绿。",
     validRangeCm: "有效范围：{{minCm}}-{{maxCm}} 厘米",
     directionButtonsTitle: "方向按钮",
+    directionButtonHint: "选择兰氏环缺口的方向",
+    directionUp: "选择上",
+    directionDown: "选择下",
+    directionLeft: "选择左",
+    directionRight: "选择右",
+    directionUpLeft: "选择左上",
+    directionUpRight: "选择右上",
+    directionDownLeft: "选择左下",
+    directionDownRight: "选择右下",
     swipeWhenVisible: "出现视力表后，向缺口方向滑动。",
     nextSymbolCountdown: "{{seconds}} 秒后更换符号",
     nextSymbolTimerA11y: "符号刷新剩余约 {{seconds}} 秒",
@@ -364,12 +392,43 @@ export const zhHans = withPartial({
       rightCovered: "请遮住右眼后继续。",
       neither: "请双眼同时使用（不要遮住任一只眼）后继续。",
     },
+    faceRequired: "请面向前置摄像头，确保只有检测眼设置可见。",
+    testEyeVisibleRequired: "请保持{{eye}}睁开并居中对准摄像头。",
+    coveredEyeMustHide: "请完全遮住{{eye}}——摄像头中应只出现检测眼。",
+    manualPatchHint:
+      "摄像头通常无法识别遮住眼睛的手。当非检测眼已遮住且检测眼睁开时，请点击下方。",
+    manualPatchConfirm: "已遮住{{eye}}——继续检测",
+    manualPatchConfirmA11y: "确认已遮住{{eye}}并继续视力检测",
+    statusRequired: "必需",
+    statusDetected: "已检测",
+    eyeCoverState: {
+      leftCovered: "左眼已遮",
+      rightCovered: "右眼已遮",
+      neither: "未遮",
+      unknown: "未知",
+    },
+    eyeCheck: {
+      faceNotVisible: "未检测到面部",
+      leftUnable: "左：无法检测",
+      rightUnable: "右：无法检测",
+      leftVisible: "左：可见",
+      rightVisible: "右：可见",
+      leftHidden: "左：已遮",
+      rightHidden: "右：已遮",
+      leftUncertain: "左：不确定",
+      rightUncertain: "右：不确定",
+      readyRight: "左已遮 · 右就绪",
+      readyLeft: "右已遮 · 左就绪",
+      readyBoth: "双眼可见",
+    },
     beforeStartTitle: "开始前",
     beforeStartBody:
       "这是快速筛查工具，不能替代医学诊断。在光线充足处将手机保持在距眼约 {{cm}} 厘米（约 {{inches}} 英寸）。校准请在「设置」中管理。",
     resultsTitle: "结果",
     resultsBody:
       "在约 {{cm}} 厘米距离您能辨认的最小字号。若两眼差异明显，建议进行专业眼科检查。",
+    sightStatusLabel: "视距状态",
+    averageDistanceCm: "检测期间平均 {{cm}} 厘米",
     testAgain: "再测一次",
     done: "完成",
     runAgainA11y: "重新测试",
@@ -384,6 +443,7 @@ export const zhHans = withPartial({
     footerCta: "创建账户",
     createAccountA11y: "创建新账户",
   },
+  help: helpZhHans,
   onboarding: {
     welcomeTitlePrefix: "欢迎来到",
     welcomeSubtitle:

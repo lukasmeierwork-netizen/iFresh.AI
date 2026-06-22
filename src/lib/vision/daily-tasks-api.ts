@@ -1,5 +1,10 @@
 import { getBackendUrl } from '@/lib/network/backend-origin';
 import { supabase } from '@/lib/supabase/client';
+import type { DailyTaskLocaleOverlay } from '@/lib/vision/daily-task-locale-cache';
+import {
+  normalizeTaskContentLocale,
+  type TaskContentLocale,
+} from '@/lib/vision/task-locales';
 
 export type DailyTaskPeriod = 'morning' | 'afternoon' | 'evening' | 'night';
 
@@ -11,13 +16,22 @@ export type DailyTaskPeriod = 'morning' | 'afternoon' | 'evening' | 'night';
  */
 export type DailyTaskCategory = string;
 
+export type TaskLocaleCopy = {
+  title: string;
+  description: string;
+};
+
+export type DailyTaskTranslations = Partial<Record<TaskContentLocale, TaskLocaleCopy>>;
+
 export type DailyTask = {
   id: string;
   planDate: string; // YYYY-MM-DD
   period: DailyTaskPeriod;
   category: DailyTaskCategory;
+  /** English fallback copy kept for legacy rows and quick display. */
   title: string;
   description: string;
+  translations: DailyTaskTranslations;
   position: number;
   completed: boolean;
   completedAt: string | null;
@@ -31,6 +45,7 @@ type ApiTaskRow = {
   category: string;
   title: string;
   description: string;
+  translations?: DailyTaskTranslations | null;
   position: number;
   completed: boolean;
   completed_at: string | null;
@@ -64,6 +79,25 @@ function normalizeCategorySlug(raw: string): DailyTaskCategory {
   return 'eye-exercise';
 }
 
+function parseTranslations(raw: unknown): DailyTaskTranslations {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: DailyTaskTranslations = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const title =
+      typeof (value as { title?: unknown }).title === 'string'
+        ? (value as { title: string }).title.trim()
+        : '';
+    const description =
+      typeof (value as { description?: unknown }).description === 'string'
+        ? (value as { description: string }).description.trim()
+        : '';
+    if (!title || !description) continue;
+    out[normalizeTaskContentLocale(key)] = { title, description };
+  }
+  return out;
+}
+
 function getDailyTasksUrl(): string {
   return getBackendUrl('/vision/daily-tasks');
 }
@@ -86,13 +120,27 @@ function normalizeRow(row: ApiTaskRow): DailyTask | null {
   const source: DailyTask['source'] =
     row.source === 'fallback' || row.source === 'manual' ? row.source : 'ai';
 
+  const translations = parseTranslations(row.translations);
+  const hasTranslations = Object.keys(translations).length > 0;
+  const resolvedTranslations = hasTranslations
+    ? translations
+    : {
+        en: { title: row.title, description: row.description },
+      };
+
+  const display =
+    resolvedTranslations.en ??
+    resolvedTranslations[normalizeTaskContentLocale(Object.keys(resolvedTranslations)[0])] ??
+    { title: row.title, description: row.description };
+
   return {
     id: row.id,
     planDate: row.plan_date,
     period,
     category,
-    title: row.title,
-    description: row.description,
+    title: display.title,
+    description: display.description,
+    translations: resolvedTranslations,
     position: typeof row.position === 'number' ? row.position : 0,
     completed: row.completed === true,
     completedAt: typeof row.completed_at === 'string' ? row.completed_at : null,
@@ -107,22 +155,33 @@ async function getAuthorizationHeader(): Promise<Record<string, string> | null> 
   return { Authorization: `Bearer ${token}` };
 }
 
+type TranslateTasksResponse = {
+  ok: boolean;
+  data?: DailyTaskLocaleOverlay;
+  error?: string;
+};
+
+function toLocalIsoDate(value: Date): string {
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, '0');
+  const d = String(value.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 /**
- * Fetch the plan for a single day. The backend only invokes Gemini if no row
- * exists for `(user, planDate)`; subsequent calls just re-read the saved rows.
+ * Fetch the canonical English task plan for a day. Auto-generation runs only
+ * when `planDate` is the client's current calendar day.
  */
 export async function fetchDailyTasksForDate(input: {
   planDate: string;
-  locale?: string;
 }): Promise<DailyTask[]> {
   const auth = await getAuthorizationHeader();
   if (!auth) return [];
 
-  const params = new URLSearchParams({ date: input.planDate });
-  if (input.locale && input.locale.trim()) {
-    params.set('locale', input.locale.trim());
-  }
-
+  const params = new URLSearchParams({
+    date: input.planDate,
+    today: toLocalIsoDate(new Date()),
+  });
   const url = `${getDailyTasksUrl()}?${params.toString()}`;
 
   let response: Response;
@@ -150,6 +209,49 @@ export async function fetchDailyTasksForDate(input: {
   return body.data
     .map(normalizeRow)
     .filter((row): row is DailyTask => row != null);
+}
+
+/** Translate English source tasks into the requested locale (lazy, cached on device). */
+export async function translateDailyTasks(input: {
+  locale: string;
+  tasks: Array<Pick<DailyTask, 'id' | 'title' | 'description'>>;
+}): Promise<DailyTaskLocaleOverlay> {
+  const auth = await getAuthorizationHeader();
+  if (!auth) return {};
+
+  const url = `${getDailyTasksUrl()}/translate`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { ...auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        locale: input.locale,
+        tasks: input.tasks.map((task) => ({
+          id: task.id,
+          title: task.title,
+          description: task.description,
+        })),
+      }),
+    });
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? `: ${error.message}` : '';
+    throw new Error(`Daily tasks translation network error (${url})${detail}`);
+  }
+
+  if (!response.ok) {
+    let message = `Daily tasks translation failed (${response.status})`;
+    try {
+      const body = (await response.json()) as TranslateTasksResponse;
+      if (typeof body.error === 'string' && body.error.length > 0) message = body.error;
+    } catch {
+      // keep default message
+    }
+    throw new Error(message);
+  }
+
+  const body = (await response.json()) as TranslateTasksResponse;
+  return body.data ?? {};
 }
 
 export async function setDailyTaskCompletion(input: {

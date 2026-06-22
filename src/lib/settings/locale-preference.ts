@@ -1,7 +1,7 @@
 export const LOCALE_PREFERENCE_STORAGE_KEY = 'eyefresh.locale-preference-v1';
 
 /** BCP-47-style codes registered in i18next `resources` (hyphenated where needed). */
-export const APP_LANGUAGES = ['en', 'zh-Hans', 'fr', 'ko'] as const;
+export const APP_LANGUAGES = ['en', 'zh-Hans', 'fr', 'ko', 'ja', 'es', 'de'] as const;
 
 export type AppLanguageCode = (typeof APP_LANGUAGES)[number];
 export type LocalePreference = 'system' | AppLanguageCode;
@@ -13,6 +13,10 @@ export function parseLocalePreference(raw: string | null): LocalePreference {
     return raw as LocalePreference;
   }
   return 'system';
+}
+
+export function isStoredLocalePreference(raw: string | null): raw is LocalePreference {
+  return raw != null && VALID.has(raw);
 }
 
 export const APP_LANGUAGE_SET = new Set<string>(APP_LANGUAGES);

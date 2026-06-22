@@ -42,6 +42,9 @@ export function deviceLocaleToAppLanguage(loc: DeviceLocale): AppLanguageCode | 
     en: 'en',
     fr: 'fr',
     ko: 'ko',
+    ja: 'ja',
+    es: 'es',
+    de: 'de',
   };
 
   const mapped = byLanguage[lang];

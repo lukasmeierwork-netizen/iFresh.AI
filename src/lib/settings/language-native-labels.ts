@@ -6,4 +6,7 @@ export const LANGUAGE_NATIVE_LABELS: Record<AppLanguageCode, string> = {
   'zh-Hans': '简体中文',
   fr: 'Français',
   ko: '한국어',
+  ja: '日本語',
+  es: 'Español',
+  de: 'Deutsch',
 };

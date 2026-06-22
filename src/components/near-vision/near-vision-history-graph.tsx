@@ -8,7 +8,13 @@ import { ThemedText } from '@/components/ui/themed-text';
 import { Brand } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { NearVisionHistoryEntry } from '@/lib/vision/near-vision-storage';
-import { formatAcuityValue, N_TO_SNELLEN, type NearVisionDisplayFormat } from '@/lib/vision/snellen';
+import {
+  formatAcuityValue,
+  getDecimalAcuity,
+  N_TO_SNELLEN,
+  SNELLEN_TO_DECIMAL,
+  type NearVisionDisplayFormat,
+} from '@/lib/vision/snellen';
 import type { NearVisionInsight } from '@/lib/vision/near-vision-results-api';
 
 type NearVisionHistoryGraphProps = {
@@ -23,6 +29,9 @@ type NearVisionHistoryGraphProps = {
 type EyeFilter = 'both' | 'right' | 'left';
 type ChartEntry = NearVisionHistoryEntry & { nSize: number; approxSnellen: string };
 type VisionStatusKey = 'normal' | 'slight' | 'moderate' | 'severe';
+type ChartYScale =
+  | { mode: 'n'; min: number; max: number }
+  | { mode: 'decimal'; min: number; max: number };
 
 const CHART_HEIGHT = 132;
 const PADDING_X = 10;
@@ -76,6 +85,62 @@ function formatFromNSize(n: number, displayFormat: NearVisionDisplayFormat): str
     },
     displayFormat
   );
+}
+
+function formatDecimalLabel(decimal: number): string {
+  return decimal.toFixed(decimal % 1 === 0 ? 1 : 2);
+}
+
+function chartValueForEntry(entry: ChartEntry, displayFormat: NearVisionDisplayFormat): number {
+  if (displayFormat === 'decimal') {
+    const decimal = getDecimalAcuity({
+      eye: 'both',
+      nSize: entry.nSize,
+      approxSnellen: entry.approxSnellen,
+    });
+    if (decimal != null) return decimal;
+    return SNELLEN_TO_DECIMAL[nToSnellen(entry.nSize)] ?? entry.nSize;
+  }
+  return entry.nSize;
+}
+
+function buildYScale(chartHistory: ChartEntry[], displayFormat: NearVisionDisplayFormat): ChartYScale {
+  if (chartHistory.length === 0) {
+    return displayFormat === 'decimal'
+      ? { mode: 'decimal', min: 0.1, max: 1 }
+      : { mode: 'n', min: 5, max: 12 };
+  }
+
+  const values = chartHistory.map((entry) => chartValueForEntry(entry, displayFormat));
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+
+  if (displayFormat === 'decimal') {
+    if (dataMin === dataMax) {
+      return { mode: 'decimal', min: Math.max(0.1, dataMin - 0.1), max: dataMax + 0.1 };
+    }
+    return { mode: 'decimal', min: dataMin, max: dataMax };
+  }
+
+  return {
+    mode: 'n',
+    min: Math.min(5, dataMin),
+    max: Math.max(12, dataMax),
+  };
+}
+
+function chartValueToY(
+  value: number,
+  yScale: ChartYScale,
+  innerHeight: number
+): number {
+  const span = Math.max(0.001, yScale.max - yScale.min);
+  // Better vision sits at the top: smaller N or higher decimal acuity.
+  const yRatio =
+    yScale.mode === 'decimal'
+      ? (yScale.max - value) / span
+      : (value - yScale.min) / span;
+  return CHART_TOP_PADDING + yRatio * innerHeight;
 }
 
 function resolveEntryForEye(entry: NearVisionHistoryEntry, eye: EyeFilter): ChartEntry | null {
@@ -166,12 +231,10 @@ export function NearVisionHistoryGraph({
   const viewportWidth = Math.max(80, width - CARD_HORIZONTAL_PADDING);
   const chartWidth = Math.max(viewportWidth, chartHistory.length * 24);
 
-  const yScale = useMemo(() => {
-    if (chartHistory.length === 0) return { minN: 5, maxN: 12 };
-    const minN = Math.min(5, ...chartHistory.map((h) => h.nSize));
-    const maxN = Math.max(12, ...chartHistory.map((h) => h.nSize));
-    return { minN, maxN };
-  }, [chartHistory]);
+  const yScale = useMemo(
+    () => buildYScale(chartHistory, displayFormat),
+    [chartHistory, displayFormat]
+  );
 
   const resolvedSelectedIdx = useMemo(() => {
     if (chartHistory.length === 0) return null;
@@ -193,30 +256,37 @@ export function NearVisionHistoryGraph({
     return Math.max(18, (chartWidth - PADDING_X * 2) / (chartHistory.length - 1));
   }, [chartHistory.length, chartWidth]);
 
-  const ySpan = Math.max(1, yScale.maxN - yScale.minN);
   const innerHeight = Math.max(1, CHART_HEIGHT - CHART_TOP_PADDING - CHART_BOTTOM_PADDING);
   const yTicks = useMemo(
     () =>
       Array.from({ length: Y_TICK_COUNT }, (_, idx) => {
         const ratio = idx / Math.max(1, Y_TICK_COUNT - 1);
-        const n = yScale.minN + ratio * ySpan;
         const y = CHART_TOP_PADDING + ratio * innerHeight;
-        return {
-          y,
-          label: formatFromNSize(Math.round(n), displayFormat),
-        };
+        const span = Math.max(0.001, yScale.max - yScale.min);
+        const chartValue =
+          yScale.mode === 'decimal'
+            ? yScale.max - ratio * span
+            : yScale.min + ratio * span;
+        const label =
+          yScale.mode === 'decimal'
+            ? formatDecimalLabel(chartValue)
+            : formatFromNSize(chartValue, displayFormat);
+        return { y, label };
       }),
-    [displayFormat, innerHeight, yScale.minN, ySpan]
+    [displayFormat, innerHeight, yScale]
   );
   const points = useMemo(
     () =>
       chartHistory.map((entry, idx) => {
         const x = PADDING_X + idx * xSpacing;
-        const yRatio = (entry.nSize - yScale.minN) / ySpan;
-        const y = CHART_TOP_PADDING + yRatio * innerHeight;
+        const y = chartValueToY(
+          chartValueForEntry(entry, displayFormat),
+          yScale,
+          innerHeight
+        );
         return { x, y };
       }),
-    [chartHistory, innerHeight, xSpacing, yScale.minN, ySpan]
+    [chartHistory, displayFormat, innerHeight, xSpacing, yScale]
   );
   const selectedPoint = resolvedSelectedIdx == null ? null : points[resolvedSelectedIdx];
   const selectedPointColor = selectedEntry ? colorForNSize(selectedEntry.nSize) : chartLine;

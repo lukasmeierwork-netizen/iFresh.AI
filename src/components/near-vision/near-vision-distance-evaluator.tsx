@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 import { useUsageField } from '@/hooks/use-usage-store';
 import { getUsageSnapshot, setMonitoringEnabled } from '@/lib/usage/usage-store';
+import { FACE_LOST_HOLD_MS } from '@/lib/vision/near-vision-distance';
 
 import type { NearVisionDistanceEvaluatorProps } from './near-vision-distance-evaluator.types';
 
@@ -21,6 +22,7 @@ export function NearVisionDistanceEvaluator({
   const faceVisible = useUsageField('faceVisible');
 
   const prevEnabledRef = useRef<boolean | null>(null);
+  const lastEstimateRef = useRef<{ distanceCm: number; atMs: number } | null>(null);
 
   useEffect(() => {
     if (!active) return;
@@ -36,15 +38,32 @@ export function NearVisionDistanceEvaluator({
   }, [active]);
 
   useEffect(() => {
+    const now = Date.now();
+
     if (!active || !monitoringEnabled) {
+      lastEstimateRef.current = null;
       onDistanceEstimate?.(null);
       return;
     }
-    if (!faceVisible || distanceCm == null) {
-      onDistanceEstimate?.(null);
+
+    if (distanceCm != null) {
+      lastEstimateRef.current = { distanceCm, atMs: now };
+      onDistanceEstimate?.({ distanceCm });
       return;
     }
-    onDistanceEstimate?.({ distanceCm });
+
+    const held =
+      (faceVisible || lastEstimateRef.current != null) &&
+      lastEstimateRef.current != null &&
+      now - lastEstimateRef.current.atMs <= FACE_LOST_HOLD_MS;
+
+    if (held) {
+      onDistanceEstimate?.({ distanceCm: lastEstimateRef.current!.distanceCm });
+      return;
+    }
+
+    lastEstimateRef.current = null;
+    onDistanceEstimate?.(null);
   }, [active, monitoringEnabled, faceVisible, distanceCm, onDistanceEstimate]);
 
   return null;

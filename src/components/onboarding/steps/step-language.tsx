@@ -19,6 +19,9 @@ const LANGUAGE_FLAGS: Record<AppLanguageCode, string> = {
   'zh-Hans': '🇨🇳',
   fr: '🇫🇷',
   ko: '🇰🇷',
+  ja: '🇯🇵',
+  es: '🇪🇸',
+  de: '🇩🇪',
 };
 
 type Props = {
